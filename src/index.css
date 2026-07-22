@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+/* Print Stylesheet for Dual-Page A4 Job Card with Mixed Orientation */
+@page {
+  size: portrait;
+  margin: 0;
+}
+
+@page landscape-page {
+  size: landscape;
+  margin: 0;
+}
+
+@media print {
+  /* Hide every part of the application */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Show only the print area and its children */
+  #printable-jobcard-doc,
+  #printable-jobcard-doc * {
+    visibility: visible;
+  }
+  
+  #printable-jobcard-doc {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Page 1 (Portrait) */
+  .print-page {
+    page-break-after: always;
+    page-break-inside: avoid;
+    width: 210mm;
+    height: 297mm;
+    box-sizing: border-box;
+    padding: 8mm 10mm;
+    position: relative;
+    background: white !important;
+    overflow: hidden;
+    page: auto; /* Uses default portrait @page */
+  }
+
+  /* Page 2 (Landscape) */
+  .print-page-landscape {
+    page-break-after: avoid;
+    page-break-inside: avoid;
+    width: 297mm;
+    height: 210mm;
+    box-sizing: border-box;
+    padding: 8mm 10mm;
+    position: relative;
+    background: white !important;
+    overflow: hidden;
+    page: landscape-page; /* Instructs browser to print in landscape */
+  }
+
+  /* Force background colors and borders in prints */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}

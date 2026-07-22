@@ -1,0 +1,204 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "System user account with specific ERP permission flags",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Auth User ID" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "permissions": {
+          "type": "object",
+          "description": "Granular user feature permissions",
+          "properties": {
+            "canReceive": { "type": "boolean" },
+            "canInspect": { "type": "boolean" },
+            "canQuote": { "type": "boolean" },
+            "canCreateJobCard": { "type": "boolean" },
+            "canClose": { "type": "boolean" },
+            "isAdmin": { "type": "boolean" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Customer contact information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
+    },
+    "ComponentMatrix": {
+      "title": "Component Pricing Matrix",
+      "description": "Pricing matrix for a specific component type (e.g. Spindle, Wheel Hub) mapping steps to model pricing",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Component component type, e.g., Spindle" },
+        "name": { "type": "string", "description": "Component name" },
+        "models": {
+          "type": "array",
+          "description": "List of available models (columns)"
+        },
+        "steps": {
+          "type": "array",
+          "description": "List of repair steps with pricing per model",
+          "items": {
+            "type": "object",
+            "properties": {
+              "stepName": { "type": "string" },
+              "prices": {
+                "type": "object",
+                "description": "Mapping of modelName to price"
+              }
+            }
+          }
+        },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name"]
+    },
+    "Job": {
+      "title": "Job",
+      "description": "A repair job tracking the component repair flow",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "deliveryNoteNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "componentType": { "type": "string" },
+        "modelName": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["Received", "Inspected", "PreQuoted", "JobCardCreated", "Closed"]
+        },
+        "customFields": {
+          "type": "object",
+          "description": "Dynamically added receiving columns"
+        },
+        "files": {
+          "type": "array",
+          "description": "Stored documents/pictures as base64/data URLs",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string" },
+              "size": { "type": "number" },
+              "dataUrl": { "type": "string" },
+              "uploadedAt": { "type": "string" }
+            }
+          }
+        },
+        "dateReceived": { "type": "string" },
+        "capturedBy": { "type": "string" },
+        "inspectionDetails": {
+          "type": "object",
+          "properties": {
+            "inspectorName": { "type": "string" },
+            "inspectedAt": { "type": "string" },
+            "customerInstructions": { "type": "string" },
+            "inspectorNotes": { "type": "string" },
+            "findings": { "type": "string" }
+          }
+        },
+        "preQuoteDetails": {
+          "type": "object",
+          "properties": {
+            "steps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "stepName": { "type": "string" },
+                  "price": { "type": "number" },
+                  "isCustom": { "type": "boolean" }
+                }
+              }
+            },
+            "totalCost": { "type": "number" },
+            "quotedAt": { "type": "string" },
+            "quotedBy": { "type": "string" }
+          }
+        },
+        "jobCardDetails": {
+          "type": "object",
+          "properties": {
+            "assignedTechnician": { "type": "string" },
+            "scheduledDate": { "type": "string" },
+            "requiredParts": { "type": "string" },
+            "instructions": { "type": "string" },
+            "jobCardCreatedAt": { "type": "string" },
+            "jobCardCreatedBy": { "type": "string" }
+          }
+        },
+        "closingDetails": {
+          "type": "object",
+          "properties": {
+            "closedAt": { "type": "string" },
+            "closedBy": { "type": "string" },
+            "closingNotes": { "type": "string" },
+            "qualityReleaseSign": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "deliveryNoteNumber", "customerId", "status"]
+    },
+    "Config": {
+      "title": "System Configuration",
+      "description": "Global custom configurations (like dynamic job columns)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customColumns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "type": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles and permission records"
+    },
+    "/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Customer contact directory"
+    },
+    "/components/{componentId}": {
+      "schema": "ComponentMatrix",
+      "description": "Component repair steps and model matrices"
+    },
+    "/jobs/{jobId}": {
+      "schema": "Job",
+      "description": "Active and closed repair job cards"
+    },
+    "/config/{configId}": {
+      "schema": "Config",
+      "description": "Global settings such as dynamic table columns"
+    }
+  }
+}
