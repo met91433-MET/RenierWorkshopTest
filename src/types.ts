@@ -68,6 +68,7 @@ export interface JobPreQuote {
 }
 
 export interface JobCardDetails {
+  jobCardNumber?: string;
   assignedTechnician?: string;
   scheduledDate?: string;
   requiredParts?: string;
@@ -114,3 +115,121 @@ export interface CustomColumn {
   label: string;
   type: 'text' | 'number' | 'date' | 'boolean';
 }
+
+export interface JobCardSectionConfig {
+  id: string; // e.g. 'header', 'customer_info', 'job_specs', 'qc_inspection', 'quoted_steps', 'materials_required', 'technician_routing', 'signoff'
+  title: string;
+  enabled: boolean;
+  order: number;
+  customTitle?: string;
+}
+
+export interface JobCardFormatLabels {
+  orderNumber: string;
+  yourRef: string;
+  customerJobNumber: string;
+  deliveryNoteNumber: string;
+  leadTechnician: string;
+  workshopArea: string;
+  dueDate: string;
+  scheduledDate: string;
+  specialInstructions: string;
+  requiredParts: string;
+  approvalSignature: string;
+  hardStampDate: string;
+  consumablesTitle: string;
+  outsourcingTitle: string;
+  page2Warning: string;
+}
+
+export interface JobCardFormatConfig {
+  companyName: string;
+  companySubtitle: string;
+  companyTagline: string;
+  documentTitle: string;
+  isoCertText: string;
+  sabsBadgeText: string;
+  
+  // Logo customization
+  showCompanyLogo: boolean;
+  logoUrl?: string;
+  logoAlignment: 'left' | 'center' | 'right';
+  logoSize: 'small' | 'medium' | 'large';
+
+  // Aesthetic styling & colors
+  accentColor: string; // e.g. #dc2626 (Job # and accent lines)
+  customerTextColor: string; // e.g. #c026d3 (pink/magenta)
+  consumablesHeaderBg: string; // e.g. #e0f2fe (cyan/light blue)
+  outsourcingHeaderBg: string; // e.g. #fef08a (yellow/amber)
+  stampBoxBorderColor: string; // e.g. #22c55e (green)
+  borderWidth: 'thin' | 'normal' | 'thick';
+
+  // Element visibility toggles
+  showSabsBadge: boolean;
+  showIsoBadge: boolean;
+  showAreaBadge: boolean;
+  showHardStampBox: boolean;
+  showConsumablesTable: boolean;
+  showOutsourcingTable: boolean;
+  showApprovalSignature: boolean;
+  showDueDate: boolean;
+
+  labels: JobCardFormatLabels;
+  sections: JobCardSectionConfig[];
+  footerNotePage1: string;
+  footerNotePage2: string;
+  updatedAt?: string;
+}
+
+export const DEFAULT_JOB_CARD_FORMAT: JobCardFormatConfig = {
+  companyName: "METALOGIK",
+  companySubtitle: "ENGINEERING SERVICES (Pty) Ltd",
+  companyTagline: "OMNI NOTE",
+  documentTitle: "Job Card",
+  isoCertText: "ISO 9001",
+  sabsBadgeText: "SABS",
+  showCompanyLogo: true,
+  logoAlignment: 'left',
+  logoSize: 'medium',
+  accentColor: "#dc2626",
+  customerTextColor: "#c026d3",
+  consumablesHeaderBg: "#e0f2fe",
+  outsourcingHeaderBg: "#fef08a",
+  stampBoxBorderColor: "#22c55e",
+  borderWidth: "normal",
+  showSabsBadge: true,
+  showIsoBadge: true,
+  showAreaBadge: true,
+  showHardStampBox: true,
+  showConsumablesTable: true,
+  showOutsourcingTable: true,
+  showApprovalSignature: true,
+  showDueDate: true,
+  labels: {
+    orderNumber: "Order #",
+    yourRef: "Your Ref. 1",
+    customerJobNumber: "Customer Job #",
+    deliveryNoteNumber: "Delivery / RFQ #",
+    leadTechnician: "Status / Tech",
+    workshopArea: "AREA",
+    dueDate: "Due Date",
+    scheduledDate: "Scheduled Start",
+    specialInstructions: "Special Technical Instructions",
+    requiredParts: "Parts & Materials Required",
+    approvalSignature: "Approval Signature",
+    hardStampDate: "HARD STAMP DATE",
+    consumablesTitle: "Consumables",
+    outsourcingTitle: "Outsourcing",
+    page2Warning: "DOCUMENT NOT to be copied for customer"
+  },
+  sections: [
+    { id: 'header', title: 'Header & Company Branding', enabled: true, order: 1 },
+    { id: 'customer_info', title: 'Customer & Reference Table', enabled: true, order: 2 },
+    { id: 'model_sub_bar', title: 'Model & Description Bar', enabled: true, order: 3 },
+    { id: 'work_instructions', title: 'Technical Procedure Box & Area Badge', enabled: true, order: 4 },
+    { id: 'tables_grid', title: 'Consumables, Outsourcing & Hard Stamp Grid', enabled: true, order: 5 }
+  ],
+  footerNotePage1: "CONFIDENTIAL - WORKSHOP FLOOR ROUTING SLIP",
+  footerNotePage2: "QUALITY CONTROL SIGN-OFF REQUIRED UPON COMPLETION"
+};
+

@@ -48,7 +48,6 @@ export default function DashboardView({
 
   // Count metrics
   const activeJobsCount = jobs.filter(j => j.status !== 'Closed').length;
-  const closedJobsCount = jobs.filter(j => j.status === 'Closed').length;
   const receivingCount = jobs.filter(j => j.status === 'Received').length;
   const qcCount = jobs.filter(j => j.status === 'Inspected').length;
   const quoteCount = jobs.filter(j => j.status === 'PreQuoted').length;
@@ -76,7 +75,7 @@ export default function DashboardView({
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-slate-300 transition-all">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Jobs</p>
           <p className="text-3xl font-extrabold text-slate-800 mt-2 font-display">{activeJobsCount}</p>
@@ -96,10 +95,6 @@ export default function DashboardView({
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-emerald-500 hover:border-slate-300 transition-all">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Job Cards</p>
           <p className="text-3xl font-extrabold text-emerald-600 mt-2 font-display">{cardCount}</p>
-        </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-slate-400 hover:border-slate-300 transition-all">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Closed Jobs</p>
-          <p className="text-3xl font-extrabold text-slate-600 mt-2 font-display">{closedJobsCount}</p>
         </div>
       </div>
 
@@ -224,8 +219,8 @@ export default function DashboardView({
                     case 'JobCardCreated':
                       statusBadge = 'bg-emerald-50 text-emerald-700 border-emerald-200';
                       statusText = 'In Service';
-                      nextActionTab = 'closing';
-                      actionLabel = 'Close Job';
+                      nextActionTab = 'enquiries';
+                      actionLabel = 'Job Enquiry';
                       break;
                     case 'Closed':
                       statusBadge = 'bg-slate-100 text-slate-600 border-slate-200';

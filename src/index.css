@@ -26,24 +26,28 @@ body {
 @media print {
   /* Hide every part of the application */
   body * {
-    visibility: hidden;
+    visibility: hidden !important;
   }
   
   /* Show only the print area and its children */
   #printable-jobcard-doc,
   #printable-jobcard-doc * {
-    visibility: visible;
+    visibility: visible !important;
   }
   
-  #printable-jobcard-doc {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 0;
+  #printable-jobcard-doc,
+  .print-active {
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
     background: white !important;
     color: black !important;
+    z-index: 99999 !important;
   }
 
   /* Page 1 (Portrait) */
@@ -51,7 +55,7 @@ body {
     page-break-after: always;
     page-break-inside: avoid;
     width: 210mm;
-    height: 297mm;
+    min-height: 297mm;
     box-sizing: border-box;
     padding: 8mm 10mm;
     position: relative;
@@ -65,7 +69,7 @@ body {
     page-break-after: avoid;
     page-break-inside: avoid;
     width: 297mm;
-    height: 210mm;
+    min-height: 210mm;
     box-sizing: border-box;
     padding: 8mm 10mm;
     position: relative;

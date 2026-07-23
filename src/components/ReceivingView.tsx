@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Customer, ComponentMatrix, CustomColumn, Job, JobFile } from '../types';
+import { generateNextComponentId } from '../utils/idUtils';
 import { 
   FileText, 
   Plus, 
@@ -17,6 +18,7 @@ interface ReceivingViewProps {
   customColumns: CustomColumn[];
   onSaveJobs: (jobs: Job[]) => Promise<void>;
   currentUser: any;
+  existingJobs?: Job[];
 }
 
 interface TempJobItem {
@@ -40,7 +42,8 @@ export default function ReceivingView({
   componentsList,
   customColumns,
   onSaveJobs,
-  currentUser
+  currentUser,
+  existingJobs = []
 }: ReceivingViewProps) {
   // Main form fields
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
@@ -193,8 +196,7 @@ export default function ReceivingView({
 
       // Map job items to actual Jobs
       const jobsToSave: Job[] = jobItems.map((item, idx) => {
-        const timestamp = Date.now() + idx;
-        const jobId = `JOB-${deliveryNoteNumber}-${timestamp.toString().slice(-4)}`;
+        const jobId = generateNextComponentId(existingJobs, idx);
 
         // Combine delivery level files and job specific files
         const combinedFiles = [...deliveryFiles, ...item.files];

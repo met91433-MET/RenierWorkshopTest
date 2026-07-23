@@ -11,12 +11,13 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Customer, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions } from './types';
+import { Customer, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT } from './types';
 
 // ==========================================
 // 1. CONFIG / CUSTOM COLUMNS SERVICE
 // ==========================================
 const CONFIG_DOC_ID = 'job_custom_fields';
+const JOB_CARD_FORMAT_DOC_ID = 'job_card_format';
 
 export async function getCustomColumns(): Promise<CustomColumn[]> {
   try {
@@ -40,6 +41,39 @@ export async function getCustomColumns(): Promise<CustomColumn[]> {
 export async function saveCustomColumns(columns: CustomColumn[]): Promise<void> {
   await setDoc(doc(db, 'config', CONFIG_DOC_ID), { customColumns: columns });
 }
+
+export async function getJobCardFormatConfig(): Promise<JobCardFormatConfig> {
+  try {
+    const formatDoc = await getDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID));
+    if (formatDoc.exists()) {
+      const data = formatDoc.data() as JobCardFormatConfig;
+      // Merge with default format in case new fields/sections were added
+      return {
+        ...DEFAULT_JOB_CARD_FORMAT,
+        ...data,
+        labels: {
+          ...DEFAULT_JOB_CARD_FORMAT.labels,
+          ...(data.labels || {})
+        },
+        sections: data.sections && data.sections.length > 0 ? data.sections : DEFAULT_JOB_CARD_FORMAT.sections
+      };
+    }
+    // Seed default format if empty
+    await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), DEFAULT_JOB_CARD_FORMAT);
+    return DEFAULT_JOB_CARD_FORMAT;
+  } catch (error) {
+    console.error("Error fetching Job Card format config:", error);
+    return DEFAULT_JOB_CARD_FORMAT;
+  }
+}
+
+export async function saveJobCardFormatConfig(config: JobCardFormatConfig): Promise<void> {
+  await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), {
+    ...config,
+    updatedAt: new Date().toISOString()
+  });
+}
+
 
 // ==========================================
 // 2. CUSTOMER SERVICE
@@ -284,7 +318,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
       console.log("Seeding default jobs...");
       const defaultJobs: Job[] = [
         {
-          id: 'job-1001',
+          id: 'C00001',
           deliveryNoteNumber: 'DN-9941',
           customerId: 'cust-cat',
           customerName: 'Caterpillar Mining Division',
@@ -302,7 +336,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
           updatedAt: new Date().toISOString()
         },
         {
-          id: 'job-1002',
+          id: 'C00002',
           deliveryNoteNumber: 'DN-9941',
           customerId: 'cust-cat',
           customerName: 'Caterpillar Mining Division',
@@ -327,7 +361,7 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
           updatedAt: new Date().toISOString()
         },
         {
-          id: 'job-1003',
+          id: 'C00003',
           deliveryNoteNumber: 'DN-8872',
           customerId: 'cust-bw',
           customerName: 'Barloworld Equipment',

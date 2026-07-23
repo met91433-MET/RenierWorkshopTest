@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Customer, 
   ComponentMatrix, 
   CustomColumn, 
   UserProfile, 
   UserPermissions,
-  ComponentStep 
+  ComponentStep,
+  JobCardFormatConfig,
+  DEFAULT_JOB_CARD_FORMAT,
+  JobCardSectionConfig,
+  JobCardFormatLabels 
 } from '../types';
+import JobCardDocument from './JobCardDocument';
 import { 
   Shield, 
   UserPlus, 
@@ -23,7 +28,21 @@ import {
   XCircle,
   HelpCircle,
   DollarSign,
-  AlertCircle
+  AlertCircle,
+  Layout,
+  ArrowUp,
+  ArrowDown,
+  Eye,
+  EyeOff,
+  Palette,
+  RotateCcw,
+  Sparkles,
+  Type,
+  Image as ImageIcon,
+  Upload,
+  Move,
+  Sliders,
+  Square
 } from 'lucide-react';
 
 interface AdminCenterViewProps {
@@ -31,12 +50,14 @@ interface AdminCenterViewProps {
   customers: Customer[];
   componentsList: ComponentMatrix[];
   customColumns: CustomColumn[];
+  jobCardFormat?: JobCardFormatConfig;
   onUpdateUserPermissions: (uid: string, permissions: UserPermissions) => Promise<void>;
   onSaveCustomColumns: (columns: CustomColumn[]) => Promise<void>;
   onSaveCustomer: (customer: Customer) => Promise<void>;
   onDeleteCustomer: (id: string) => Promise<void>;
   onSaveComponentMatrix: (matrix: ComponentMatrix) => Promise<void>;
   onDeleteComponentMatrix: (id: string) => Promise<void>;
+  onSaveJobCardFormat?: (config: JobCardFormatConfig) => Promise<void>;
 }
 
 export default function AdminCenterView({
@@ -44,14 +65,16 @@ export default function AdminCenterView({
   customers,
   componentsList,
   customColumns,
+  jobCardFormat,
   onUpdateUserPermissions,
   onSaveCustomColumns,
   onSaveCustomer,
   onDeleteCustomer,
   onSaveComponentMatrix,
-  onDeleteComponentMatrix
+  onDeleteComponentMatrix,
+  onSaveJobCardFormat
 }: AdminCenterViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'columns' | 'customers' | 'pricing'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'columns' | 'customers' | 'pricing' | 'jobCard'>('users');
 
   // ========================================================
   // 1. STATE FOR USER ROLES & PERMISSIONS
@@ -307,6 +330,99 @@ export default function AdminCenterView({
     alert("Pricing table deleted.");
   };
 
+  // ========================================================
+  // 5. STATE FOR JOB CARD FORMAT EDITOR
+  // ========================================================
+  const [formatConfig, setFormatConfig] = useState<JobCardFormatConfig>(() => {
+    return jobCardFormat || DEFAULT_JOB_CARD_FORMAT;
+  });
+  const [formatSaving, setFormatSaving] = useState(false);
+  const [formatSuccessMsg, setFormatSuccessMsg] = useState(false);
+  const [previewPage, setPreviewPage] = useState<'page1' | 'page2'>('page1');
+
+  useEffect(() => {
+    if (jobCardFormat) {
+      setFormatConfig(jobCardFormat);
+    }
+  }, [jobCardFormat]);
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      if (evt.target?.result) {
+        setFormatConfig(prev => ({ ...prev, logoUrl: evt.target!.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    setFormatConfig(prev => ({ ...prev, logoUrl: undefined }));
+  };
+
+  const moveSection = (index: number, direction: 'up' | 'down') => {
+    const newSections = [...formatConfig.sections];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= newSections.length) return;
+
+    const temp = newSections[index];
+    newSections[index] = newSections[targetIndex];
+    newSections[targetIndex] = temp;
+
+    newSections.forEach((s, idx) => {
+      s.order = idx + 1;
+    });
+
+    setFormatConfig(prev => ({
+      ...prev,
+      sections: newSections
+    }));
+  };
+
+  const toggleSectionEnabled = (id: string) => {
+    setFormatConfig(prev => ({
+      ...prev,
+      sections: prev.sections.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s)
+    }));
+  };
+
+  const updateSectionCustomTitle = (id: string, customTitle: string) => {
+    setFormatConfig(prev => ({
+      ...prev,
+      sections: prev.sections.map(s => s.id === id ? { ...s, customTitle } : s)
+    }));
+  };
+
+  const updateLabel = (key: keyof JobCardFormatLabels, value: string) => {
+    setFormatConfig(prev => ({
+      ...prev,
+      labels: {
+        ...prev.labels,
+        [key]: value
+      }
+    }));
+  };
+
+  const handleSaveFormat = async () => {
+    if (!onSaveJobCardFormat) return;
+    setFormatSaving(true);
+    try {
+      await onSaveJobCardFormat(formatConfig);
+      setFormatSuccessMsg(true);
+      setTimeout(() => setFormatSuccessMsg(false), 3000);
+    } catch (e) {
+      alert("Error saving Job Card format configuration.");
+    } finally {
+      setFormatSaving(false);
+    }
+  };
+
+  const handleResetFormat = () => {
+    setFormatConfig(DEFAULT_JOB_CARD_FORMAT);
+  };
+
   return (
     <div className="space-y-6" id="admin-center-view-root">
       {/* Page Header */}
@@ -367,6 +483,17 @@ export default function AdminCenterView({
         >
           <Briefcase className="w-4 h-4" />
           Customer Accounts Directory
+        </button>
+        <button
+          onClick={() => setActiveSubTab('jobCard')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
+            activeSubTab === 'jobCard'
+              ? 'border-blue-600 text-blue-600 bg-blue-50/20'
+              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+          }`}
+        >
+          <Layout className="w-4 h-4" />
+          Job Card Format Editor
         </button>
       </div>
 
@@ -903,15 +1030,496 @@ export default function AdminCenterView({
                       </td>
                     </tr>
                   ))}
-                  {customers.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="p-6 text-center text-slate-400 italic">
-                        No registered customers found. Create your first client account on the left!
-                      </td>
-                    </tr>
-                  )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          TAB 5: JOB CARD FORMAT EDITOR
+          ======================================================== */}
+      {activeSubTab === 'jobCard' && (
+        <div className="space-y-6">
+          {/* Top Bar with Actions */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                <Layout className="w-5 h-5 text-blue-600" />
+                Job Card Layout &amp; A4 Portrait Editor
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Customize A4 Portrait format, move logo, adjust line weights and colors, toggle tables/badges, and configure field labels.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleResetFormat}
+                className="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Reset Defaults
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveFormat}
+                disabled={formatSaving}
+                className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {formatSaving ? (
+                  <Sparkles className="w-4 h-4 animate-spin" />
+                ) : formatSuccessMsg ? (
+                  <CheckCircle className="w-4 h-4 text-emerald-300" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                {formatSaving ? 'Saving...' : formatSuccessMsg ? 'Saved Layout!' : 'Save Format Layout'}
+              </button>
+            </div>
+          </div>
+
+          {/* Grid Layout: Controls on Left, Live A4 Preview on Right */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left Controls Pane */}
+            <div className="lg:col-span-6 space-y-5">
+              {/* Card 1: Logo & Company Branding */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Logo &amp; Company Branding</h3>
+                </div>
+                <div className="p-4 space-y-4 text-xs">
+                  {/* Upload Logo File */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Company Logo Image</label>
+                    <div className="flex items-center gap-3">
+                      {formatConfig.logoUrl ? (
+                        <div className="relative w-12 h-12 p-1 border border-slate-200 rounded-xl bg-slate-50 flex items-center justify-center overflow-hidden">
+                          <img src={formatConfig.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 border-2 border-dashed border-slate-200 rounded-xl flex items-center justify-center text-slate-400 bg-slate-50">
+                          <ImageIcon className="w-6 h-6" />
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <label className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5">
+                          <Upload className="w-3.5 h-3.5" />
+                          Upload Logo
+                          <input type="file" accept="image/*" onChange={handleLogoFileUpload} className="hidden" />
+                        </label>
+                        {formatConfig.logoUrl && (
+                          <button
+                            type="button"
+                            onClick={handleRemoveLogo}
+                            className="px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                          >
+                            Remove Logo
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Logo Alignment & Size */}
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Logo Alignment</label>
+                      <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl">
+                        {(['left', 'center', 'right'] as const).map(align => (
+                          <button
+                            key={align}
+                            type="button"
+                            onClick={() => setFormatConfig(prev => ({ ...prev, logoAlignment: align }))}
+                            className={`py-1 text-[10px] font-bold uppercase rounded-lg transition-all ${
+                              formatConfig.logoAlignment === align ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            {align}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Logo Size</label>
+                      <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl">
+                        {(['small', 'medium', 'large'] as const).map(size => (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => setFormatConfig(prev => ({ ...prev, logoSize: size }))}
+                            className={`py-1 text-[10px] font-bold uppercase rounded-lg transition-all ${
+                              formatConfig.logoSize === size ? 'bg-white text-blue-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company Name</label>
+                      <input
+                        type="text"
+                        value={formatConfig.companyName}
+                        onChange={(e) => setFormatConfig(prev => ({ ...prev, companyName: e.target.value }))}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company Subtitle</label>
+                      <input
+                        type="text"
+                        value={formatConfig.companySubtitle}
+                        onChange={(e) => setFormatConfig(prev => ({ ...prev, companySubtitle: e.target.value }))}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Company Tagline</label>
+                      <input
+                        type="text"
+                        value={formatConfig.companyTagline}
+                        onChange={(e) => setFormatConfig(prev => ({ ...prev, companyTagline: e.target.value }))}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Document Title</label>
+                      <input
+                        type="text"
+                        value={formatConfig.documentTitle}
+                        onChange={(e) => setFormatConfig(prev => ({ ...prev, documentTitle: e.target.value }))}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Line Styles & Color Themes */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Line Thickness &amp; Colors</h3>
+                </div>
+                <div className="p-4 space-y-4 text-xs">
+                  {/* Border Width Selector */}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Border &amp; Line Weight</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'thin', label: 'Thin (1px)', border: 'border' },
+                        { id: 'normal', label: 'Normal (2px)', border: 'border-2' },
+                        { id: 'thick', label: 'Thick (3px)', border: 'border-4' }
+                      ].map((w) => (
+                        <button
+                          key={w.id}
+                          type="button"
+                          onClick={() => setFormatConfig(prev => ({ ...prev, borderWidth: w.id as any }))}
+                          className={`p-2 rounded-xl border flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                            formatConfig.borderWidth === w.id ? 'border-blue-600 bg-blue-50/50 text-blue-700 shadow-xs' : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className={`w-full bg-slate-800 rounded ${w.id === 'thin' ? 'h-[1px]' : w.id === 'normal' ? 'h-[2px]' : 'h-[3.5px]'}`}></div>
+                          <span className="text-[10px] font-bold">{w.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Accent & Highlights Colors */}
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Accent Color (Job #)</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={formatConfig.accentColor}
+                          onChange={(e) => setFormatConfig(prev => ({ ...prev, accentColor: e.target.value }))}
+                          className="w-8 h-8 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+                        />
+                        <span className="font-mono text-slate-700 text-xs font-bold">{formatConfig.accentColor}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Customer Name Color</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={formatConfig.customerTextColor || '#c026d3'}
+                          onChange={(e) => setFormatConfig(prev => ({ ...prev, customerTextColor: e.target.value }))}
+                          className="w-8 h-8 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+                        />
+                        <span className="font-mono text-slate-700 text-xs font-bold">{formatConfig.customerTextColor || '#c026d3'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Table Header & Stamp Colors */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Consumables Bg</label>
+                      <input
+                        type="color"
+                        value={formatConfig.consumablesHeaderBg || '#e0f2fe'}
+                        onChange={(e) => setFormatConfig(prev => ({ ...prev, consumablesHeaderBg: e.target.value }))}
+                        className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Outsourcing Bg</label>
+                      <input
+                        type="color"
+                        value={formatConfig.outsourcingHeaderBg || '#fef08a'}
+                        onChange={(e) => setFormatConfig(prev => ({ ...prev, outsourcingHeaderBg: e.target.value }))}
+                        className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Stamp Box Border</label>
+                      <input
+                        type="color"
+                        value={formatConfig.stampBoxBorderColor || '#22c55e'}
+                        onChange={(e) => setFormatConfig(prev => ({ ...prev, stampBoxBorderColor: e.target.value }))}
+                        className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Element & Badge Toggles */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Element &amp; Badge Visibility</h3>
+                </div>
+                <div className="p-4 grid grid-cols-2 gap-3 text-xs">
+                  {[
+                    { key: 'showSabsBadge', label: 'SABS Quality Badge' },
+                    { key: 'showIsoBadge', label: 'ISO 9001 Badge' },
+                    { key: 'showAreaBadge', label: 'Workshop AREA Badge' },
+                    { key: 'showHardStampBox', label: 'Hard Stamp Date Box' },
+                    { key: 'showConsumablesTable', label: 'Consumables Grid Table' },
+                    { key: 'showOutsourcingTable', label: 'Outsourcing Table' },
+                    { key: 'showApprovalSignature', label: 'Approval Signature Line' },
+                    { key: 'showDueDate', label: 'Due Date Box' }
+                  ].map(item => (
+                    <label key={item.key} className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200/60 cursor-pointer hover:bg-slate-100/80 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={Boolean((formatConfig as any)[item.key])}
+                        onChange={(e) => setFormatConfig(prev => ({ ...prev, [item.key]: e.target.checked }))}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span className="font-semibold text-slate-700 text-xs">{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Card 4: Custom Field Labels */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <Type className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Custom Field Labels</h3>
+                </div>
+                <div className="p-4 space-y-3 text-xs">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Order # Label</label>
+                      <input
+                        type="text"
+                        value={formatConfig.labels.orderNumber}
+                        onChange={(e) => updateLabel('orderNumber', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Your Ref. Label</label>
+                      <input
+                        type="text"
+                        value={formatConfig.labels.yourRef}
+                        onChange={(e) => updateLabel('yourRef', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Customer Job # Label</label>
+                      <input
+                        type="text"
+                        value={formatConfig.labels.customerJobNumber}
+                        onChange={(e) => updateLabel('customerJobNumber', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Delivery / RFQ Label</label>
+                      <input
+                        type="text"
+                        value={formatConfig.labels.deliveryNoteNumber}
+                        onChange={(e) => updateLabel('deliveryNoteNumber', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status / Tech Label</label>
+                      <input
+                        type="text"
+                        value={formatConfig.labels.leadTechnician}
+                        onChange={(e) => updateLabel('leadTechnician', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Workshop Area Label</label>
+                      <input
+                        type="text"
+                        value={formatConfig.labels.workshopArea}
+                        onChange={(e) => updateLabel('workshopArea', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Consumables Title</label>
+                      <input
+                        type="text"
+                        value={formatConfig.labels.consumablesTitle || "Consumables"}
+                        onChange={(e) => updateLabel('consumablesTitle', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Outsourcing Title</label>
+                      <input
+                        type="text"
+                        value={formatConfig.labels.outsourcingTitle || "Outsourcing"}
+                        onChange={(e) => updateLabel('outsourcingTitle', e.target.value)}
+                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 5: Section Ordering */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Grid className="w-4 h-4 text-blue-600" />
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Section Ordering &amp; Titles</h3>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium">Use arrows to reorder</span>
+                </div>
+                <div className="p-4 space-y-2 text-xs">
+                  {formatConfig.sections.map((section, idx) => (
+                    <div
+                      key={section.id}
+                      className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                        section.enabled ? 'bg-white border-slate-200 shadow-xs' : 'bg-slate-50 border-slate-100 opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 flex-1 mr-3">
+                        <button
+                          type="button"
+                          onClick={() => toggleSectionEnabled(section.id)}
+                          className={`p-1.5 rounded-lg cursor-pointer transition-colors ${
+                            section.enabled ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-slate-400 bg-slate-200 hover:bg-slate-300'
+                          }`}
+                        >
+                          {section.enabled ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                        </button>
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={section.customTitle ?? section.title}
+                            onChange={(e) => updateSectionCustomTitle(section.id, e.target.value)}
+                            className="font-bold text-slate-800 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 outline-none text-xs w-full"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => moveSection(idx, 'up')}
+                          className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded disabled:opacity-20 cursor-pointer"
+                        >
+                          <ArrowUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === formatConfig.sections.length - 1}
+                          onClick={() => moveSection(idx, 'down')}
+                          className="p-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded disabled:opacity-20 cursor-pointer"
+                        >
+                          <ArrowDown className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Pane: Live A4 Portrait Sheet Preview */}
+            <div className="lg:col-span-6 sticky top-6">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
+                <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Live A4 Portrait Preview</h3>
+                  </div>
+                  <div className="flex bg-slate-200 p-0.5 rounded-lg text-[10px] font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPage('page1')}
+                      className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                        previewPage === 'page1' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Page 1
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPage('page2')}
+                      className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                        previewPage === 'page2' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Page 2 (Timesheet Log)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Simulated A4 Portrait Job Card Document */}
+                <div className="p-4 bg-slate-200/80 overflow-y-auto max-h-[780px] flex justify-center">
+                  <div className="w-full max-w-[500px]">
+                    <JobCardDocument format={formatConfig} page={previewPage} />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

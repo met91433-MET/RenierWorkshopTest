@@ -7,7 +7,9 @@ import {
   Customer, 
   ComponentMatrix, 
   CustomColumn, 
-  UserPermissions 
+  UserPermissions,
+  JobCardFormatConfig,
+  DEFAULT_JOB_CARD_FORMAT 
 } from './types';
 import { 
   getJobs, 
@@ -24,7 +26,9 @@ import {
   updateUserPermissions,
   deleteCustomer,
   deleteComponentMatrix,
-  saveUserProfile
+  saveUserProfile,
+  getJobCardFormatConfig,
+  saveJobCardFormatConfig
 } from './dbService';
 
 import LoginView from './components/LoginView';
@@ -33,6 +37,7 @@ import ReceivingView from './components/ReceivingView';
 import InspectionView from './components/InspectionView';
 import PreQuoteView from './components/PreQuoteView';
 import JobCardView from './components/JobCardView';
+import JobEnquiriesView from './components/JobEnquiriesView';
 import AllJobsView from './components/AllJobsView';
 import AdminCenterView from './components/AdminCenterView';
 
@@ -49,7 +54,8 @@ import {
   User, 
   RefreshCw,
   Clock,
-  Lock
+  Lock,
+  Search
 } from 'lucide-react';
 
 export default function App() {
@@ -64,6 +70,7 @@ export default function App() {
   const [componentsList, setComponentsList] = useState<ComponentMatrix[]>([]);
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
+  const [jobCardFormat, setJobCardFormat] = useState<JobCardFormatConfig>(DEFAULT_JOB_CARD_FORMAT);
 
   // Navigation & Toggle State
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -143,11 +150,13 @@ export default function App() {
       const fetchedCustomers = await getCustomers();
       const fetchedComponents = await getComponentMatrices();
       const fetchedCustomCols = await getCustomColumns();
+      const fetchedFormat = await getJobCardFormatConfig();
 
       setJobs(fetchedJobs);
       setCustomers(fetchedCustomers);
       setComponentsList(fetchedComponents);
       setCustomColumns(fetchedCustomCols);
+      setJobCardFormat(fetchedFormat);
 
       // Load all users for the admin center if user is Admin
       if (userProfile?.permissions.isAdmin) {
@@ -215,6 +224,11 @@ export default function App() {
     await loadAllERPData();
   };
 
+  const handleSaveJobCardFormat = async (config: JobCardFormatConfig) => {
+    await saveJobCardFormatConfig(config);
+    await loadAllERPData();
+  };
+
   // Jump context from dashboard action buttons
   const handleSelectJobFromDashboard = (job: Job, targetTab: string) => {
     setSelectedJobContext(job);
@@ -233,7 +247,8 @@ export default function App() {
       case 'inspection': return p.canInspect;
       case 'quoting': return p.canQuote;
       case 'jobcard': return p.canCreateJobCard;
-      case 'closing': return true; // All users can search & trace jobs! Only authorized operators can sign off.
+      case 'enquiries':
+      case 'closing': return true; // All users can search & enquire jobs! Only authorized operators can sign off.
       case 'admin': return p.isAdmin;
       default: return false;
     }
@@ -262,14 +277,14 @@ export default function App() {
     { id: 'inspection', label: '2. QC / Inspection', icon: ClipboardCheck, stage: 'Stage 2' },
     { id: 'quoting', label: '3. Pre Quote', icon: Calculator, stage: 'Stage 3' },
     { id: 'jobcard', label: '4. Job Card Creation', icon: CalendarRange, stage: 'Stage 4' },
-    { id: 'closing', label: 'All Jobs', icon: Archive },
+    { id: 'enquiries', label: '5. Job Enquiries', icon: Search, stage: 'Stage 5' },
     { id: 'admin', label: 'Admin Center', icon: Lock, isAdminOnly: true },
   ];
 
   return (
-    <div className="min-h-screen flex bg-slate-50 font-sans" id="app-container">
+    <div className="h-screen w-screen overflow-hidden flex bg-slate-50 font-sans" id="app-container">
       {/* SIDEBAR NAVIGATION PANEL */}
-      <aside className="w-64 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-850 flex-shrink-0 sticky top-0 h-screen" id="sidebar-panel">
+      <aside className="w-64 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-850 flex-shrink-0 h-full" id="sidebar-panel">
         {/* Sidebar Header / Logo */}
         <div className="p-5 border-b border-slate-800 flex items-center gap-3">
           <div className="bg-blue-600 text-white p-2 rounded-xl">
@@ -354,7 +369,7 @@ export default function App() {
       </aside>
 
       {/* MAIN ERP WORKPLACE AREA */}
-      <main className="flex-1 p-8 overflow-y-auto max-w-7xl mx-auto w-full">
+      <main className="flex-1 p-8 overflow-y-auto max-w-7xl mx-auto w-full h-full">
         {dataLoading && (
           <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 py-1.5 px-4 rounded-full w-fit flex items-center gap-2 mb-4">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -403,6 +418,7 @@ export default function App() {
                 customColumns={customColumns} 
                 onSaveJobs={handleSaveJobs}
                 currentUser={userProfile}
+                existingJobs={jobs}
               />
             )}
 
@@ -428,15 +444,17 @@ export default function App() {
                 jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
                 onUpdateJob={handleUpdateJob}
                 currentUser={userProfile}
+                jobCardFormat={jobCardFormat}
               />
             )}
 
-            {activeTab === 'closing' && (
-              <AllJobsView 
+            {(activeTab === 'enquiries' || activeTab === 'closing') && (
+              <JobEnquiriesView 
                 jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
                 customColumns={customColumns}
                 onUpdateJob={handleUpdateJob}
                 currentUser={userProfile}
+                jobCardFormat={jobCardFormat}
               />
             )}
 
@@ -446,12 +464,14 @@ export default function App() {
                 customers={customers}
                 componentsList={componentsList}
                 customColumns={customColumns}
+                jobCardFormat={jobCardFormat}
                 onUpdateUserPermissions={handleUpdateUserPermissions}
                 onSaveCustomColumns={handleSaveCustomColumns}
                 onSaveCustomer={handleSaveCustomer}
                 onDeleteCustomer={handleDeleteCustomer}
                 onSaveComponentMatrix={handleSaveComponentMatrix}
                 onDeleteComponentMatrix={handleDeleteComponentMatrix}
+                onSaveJobCardFormat={handleSaveJobCardFormat}
               />
             )}
           </div>
