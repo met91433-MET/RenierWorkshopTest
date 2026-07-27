@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Job, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT } from '../types';
 import JobCardDocument from './JobCardDocument';
 import { generateNextJobCardNumber } from '../utils/idUtils';
-import { downloadPdf, openPrintTab, handlePrintAndSavePdf } from '../utils/printDoc';
+import { openInNewWindow } from '../utils/printDoc';
 import { 
   FileSpreadsheet, 
   Search, 
   Wrench, 
   Printer, 
-  Download,
   Calendar, 
   CheckCircle, 
   AlertCircle, 
@@ -61,7 +60,6 @@ export default function JobCardView({
   const [dueDate, setDueDate] = useState('31 Dec 2025');
   const [workshopArea, setWorkshopArea] = useState('9B');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [activePreviewTab, setActivePreviewTab] = useState<'page1' | 'page2' | 'all'>('all');
   const [activeModalTab, setActiveModalTab] = useState<'preview' | 'edit'>('preview');
   const [validationError, setValidationError] = useState('');
@@ -147,61 +145,11 @@ export default function JobCardView({
     return selectedJob?.jobCardDetails?.jobCardNumber || (selectedJob ? generateNextJobCardNumber(jobs) : 'Doc');
   };
 
-  const getJobCardFilename = () => {
-    const jNo = getJobCardNum();
-    return `JobCard_${jNo}.pdf`;
-  };
-
-  const handleSavePdf = async () => {
-    setIsGeneratingPdf(true);
-    try {
-      await downloadPdf({
-        elementId: 'printable-jobcard-doc',
-        filename: getJobCardFilename()
-      });
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsGeneratingPdf(false);
-    }
-  };
-
-  const handleOpenPrintTab = () => {
-    const jNo = getJobCardNum();
-    const opened = openPrintTab({
+  const handlePrint = () => {
+    openInNewWindow({
       elementId: 'printable-jobcard-doc',
-      documentTitle: `Job Card - ${jNo}`
+      documentTitle: `Job Card - ${getJobCardNum()}`
     });
-
-    if (!opened) {
-      const printDoc = document.getElementById('printable-jobcard-doc');
-      if (printDoc) {
-        printDoc.classList.remove('hidden');
-        printDoc.classList.add('print-active');
-        setTimeout(() => {
-          window.print();
-          setTimeout(() => {
-            printDoc.classList.add('hidden');
-            printDoc.classList.remove('print-active');
-          }, 800);
-        }, 50);
-      } else {
-        window.print();
-      }
-    }
-  };
-
-  const handlePrint = async () => {
-    setIsGeneratingPdf(true);
-    try {
-      await handlePrintAndSavePdf({
-        elementId: 'printable-jobcard-doc',
-        filename: getJobCardFilename(),
-        documentTitle: `Job Card - ${getJobCardNum()}`
-      });
-    } finally {
-      setIsGeneratingPdf(false);
-    }
   };
 
   const filteredJobs = pendingJobs.filter(job => 
@@ -417,22 +365,12 @@ export default function JobCardView({
               <div className="flex items-center gap-2 self-end sm:self-auto">
                 <button
                   type="button"
-                  onClick={handleSavePdf}
-                  disabled={isGeneratingPdf}
-                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
-                  title="Save PDF file to device"
-                >
-                  <Download className="w-3.5 h-3.5 text-emerald-600" />
-                  {isGeneratingPdf ? 'Saving PDF...' : 'Save PDF'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenPrintTab}
+                  onClick={handlePrint}
                   className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer"
-                  title="Print job card document"
+                  title="Print / Save PDF document in new window"
                 >
                   <Printer className="w-3.5 h-3.5 text-slate-600" />
-                  Print
+                  Print Document
                 </button>
                 <button
                   type="button"

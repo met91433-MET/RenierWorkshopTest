@@ -55,7 +55,9 @@ import {
   RefreshCw,
   Clock,
   Lock,
-  Search
+  Search,
+  Menu,
+  X
 } from 'lucide-react';
 
 export default function App() {
@@ -75,6 +77,7 @@ export default function App() {
   // Navigation & Toggle State
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showInactiveJobs, setShowInactiveJobs] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Shared Job context (when jumping from dashboard to inspection/quote, etc.)
   const [selectedJobContext, setSelectedJobContext] = useState<Job | null>(null);
@@ -282,23 +285,65 @@ export default function App() {
   ];
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex bg-slate-50 font-sans" id="app-container">
-      {/* SIDEBAR NAVIGATION PANEL */}
-      <aside className="w-64 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-850 flex-shrink-0 h-full" id="sidebar-panel">
-        {/* Sidebar Header / Logo */}
-        <div className="p-5 border-b border-slate-800 flex items-center gap-3">
-          <div className="bg-blue-600 text-white p-2 rounded-xl">
-            <Wrench className="w-5 h-5" />
+    <div className="h-screen w-screen overflow-hidden flex flex-col md:flex-row bg-slate-50 font-sans" id="app-container">
+      {/* MOBILE TOP NAVIGATION HEADER */}
+      <header className="md:hidden bg-slate-900 text-slate-200 px-4 py-3 border-b border-slate-800 flex items-center justify-between z-30 shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="bg-blue-600 text-white p-1.5 rounded-lg">
+            <Wrench className="w-4 h-4" />
           </div>
           <div>
-            <h2 className="text-base font-bold tracking-tight font-display text-white">MES Workshop3</h2>
-            <p className="text-[10px] text-slate-400 font-medium">Repair Tracking ERP</p>
+            <h2 className="text-sm font-bold tracking-tight font-display text-white">MES Workshop3</h2>
+            <p className="text-[9px] text-slate-400">Repair ERP</p>
           </div>
+        </div>
+
+        <button
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+          aria-label="Toggle menu"
+        >
+          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+      </header>
+
+      {/* MOBILE MENU BACKDROP OVERLAY */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-40 md:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* SIDEBAR NAVIGATION PANEL (Responsive slide-over on mobile, fixed on desktop) */}
+      <aside 
+        className={`fixed md:static inset-y-0 left-0 z-50 w-72 md:w-64 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-850 flex-shrink-0 h-full transform transition-transform duration-200 ease-in-out ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`} 
+        id="sidebar-panel"
+      >
+        {/* Sidebar Header / Logo */}
+        <div className="p-4 md:p-5 border-b border-slate-800 flex items-center justify-between md:justify-start gap-3">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-600 text-white p-2 rounded-xl">
+              <Wrench className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold tracking-tight font-display text-white">MES Workshop3</h2>
+              <p className="text-[10px] text-slate-400 font-medium">Repair Tracking ERP</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="md:hidden p-1 text-slate-400 hover:text-white rounded-lg"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Current User Profile Summary */}
         <div className="p-4 bg-slate-850 border-b border-slate-800 text-left flex items-center gap-3">
-          <div className="w-9 h-9 bg-slate-700 rounded-full flex items-center justify-center text-slate-200 font-extrabold text-sm uppercase">
+          <div className="w-9 h-9 bg-slate-700 rounded-full flex items-center justify-center text-slate-200 font-extrabold text-sm uppercase shrink-0">
             {userProfile.displayName ? userProfile.displayName[0] : userProfile.email[0]}
           </div>
           <div className="truncate flex-1">
@@ -311,7 +356,7 @@ export default function App() {
         </div>
 
         {/* Navigation Sidebar List */}
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto text-left">
+        <nav className="flex-1 p-3 md:p-4 space-y-1 overflow-y-auto text-left">
           {navigationItems.map((item) => {
             const IconComponent = item.icon;
             const isSelected = activeTab === item.id;
@@ -323,6 +368,7 @@ export default function App() {
                 onClick={() => {
                   setSelectedJobContext(null); // Clear context on tab change
                   setActiveTab(item.id);
+                  setIsMobileMenuOpen(false);
                 }}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-bold rounded-xl tracking-tight transition-all cursor-pointer ${
                   isSelected
@@ -352,7 +398,7 @@ export default function App() {
           <button
             onClick={loadAllERPData}
             disabled={dataLoading}
-            className="w-full flex items-center gap-2.5 justify-center py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 cursor-pointer"
+            className="w-full flex items-center gap-2.5 justify-center py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 cursor-pointer min-h-[40px]"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${dataLoading ? 'animate-spin' : ''}`} />
             {dataLoading ? 'Syncing...' : 'Force Sync Server'}
@@ -360,7 +406,7 @@ export default function App() {
           
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center gap-2.5 justify-center py-2 text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-950/30 border border-slate-800 hover:border-red-900 rounded-xl transition-all cursor-pointer"
+            className="w-full flex items-center gap-2.5 justify-center py-2 text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-950/30 border border-slate-800 hover:border-red-900 rounded-xl transition-all cursor-pointer min-h-[40px]"
           >
             <LogOut className="w-3.5 h-3.5" />
             Sign Out of ERP
@@ -369,7 +415,7 @@ export default function App() {
       </aside>
 
       {/* MAIN ERP WORKPLACE AREA */}
-      <main className="flex-1 p-8 overflow-y-auto max-w-7xl mx-auto w-full h-full">
+      <main className="flex-1 p-3 sm:p-5 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full h-full">
         {dataLoading && (
           <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 py-1.5 px-4 rounded-full w-fit flex items-center gap-2 mb-4">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />

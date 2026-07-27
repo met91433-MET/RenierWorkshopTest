@@ -44,6 +44,7 @@ export interface JobFile {
   size: number;
   dataUrl: string; // Base64 data url for preview and persistence
   uploadedAt: string;
+  category?: 'delivery' | 'job' | 'inspection' | string;
 }
 
 export interface JobInspection {
@@ -87,6 +88,7 @@ export interface JobClosingDetails {
   closedBy?: string;
   closingNotes?: string;
   qualityReleaseSign?: string;
+  closeReason?: 'completed' | 'returned';
 }
 
 export interface Job {

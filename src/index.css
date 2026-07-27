@@ -55,9 +55,10 @@ body {
     page-break-after: always;
     page-break-inside: avoid;
     width: 210mm;
+    height: 297mm;
     min-height: 297mm;
     box-sizing: border-box;
-    padding: 8mm 10mm;
+    padding: 4mm 5mm;
     position: relative;
     background: white !important;
     overflow: hidden;
@@ -69,9 +70,10 @@ body {
     page-break-after: avoid;
     page-break-inside: avoid;
     width: 297mm;
+    height: 210mm;
     min-height: 210mm;
     box-sizing: border-box;
-    padding: 8mm 10mm;
+    padding: 4mm 5mm;
     position: relative;
     background: white !important;
     overflow: hidden;
