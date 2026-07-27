@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { Customer, ComponentMatrix, CustomColumn, Job, JobFile } from '../types';
+import { Customer, ComponentMatrix, CustomColumn, Job, JobFile, deduplicateJobFiles } from '../types';
 import { generateNextComponentId } from '../utils/idUtils';
+import { compressFile } from '../utils/imageCompressor';
 import { 
   FileText, 
   Plus, 
@@ -77,40 +78,35 @@ export default function ReceivingView({
   // File uploading states
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle generic file to Base64 helper
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, isDeliveryLevel: boolean, jobIdx?: number) => {
+  // Handle generic file to Base64 helper with compression
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, isDeliveryLevel: boolean, jobIdx?: number) => {
     const files = e.target.files;
-    if (!files) return;
+    if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file: any) => {
-      // Limit file size to 800KB to fit easily within 1MB Firestore doc limits
-      if (file.size > 800 * 1024) {
-        alert(`File ${file.name} is too large. Please upload files under 800KB.`);
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const jobFile: JobFile = {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          dataUrl: reader.result as string,
-          uploadedAt: new Date().toISOString()
-        };
-
-        if (isDeliveryLevel) {
-          setDeliveryFiles(prev => [...prev, jobFile]);
-        } else if (jobIdx !== undefined) {
-          setJobItems(prev => {
-            const updated = [...prev];
-            updated[jobIdx].files = [...updated[jobIdx].files, jobFile];
-            return updated;
-          });
-        }
+    const fileList: File[] = Array.from(files);
+    for (const file of fileList) {
+      const { dataUrl, size } = await compressFile(file, 1024, 0.65);
+      const jobFile: JobFile = {
+        name: file.name,
+        type: file.type.startsWith('image/') ? 'image/jpeg' : file.type,
+        size: size || file.size,
+        dataUrl: dataUrl,
+        uploadedAt: new Date().toISOString(),
+        category: isDeliveryLevel ? 'delivery' : 'job'
       };
-      reader.readAsDataURL(file);
-    });
+
+      if (isDeliveryLevel) {
+        setDeliveryFiles(prev => deduplicateJobFiles([...prev, jobFile]));
+      } else if (jobIdx !== undefined) {
+        setJobItems(prev => {
+          const updated = [...prev];
+          updated[jobIdx].files = deduplicateJobFiles([...updated[jobIdx].files, jobFile]);
+          return updated;
+        });
+      }
+    }
+
+    e.target.value = '';
   };
 
   const removeFile = (idx: number, isDeliveryLevel: boolean, jobIdx?: number) => {
@@ -198,8 +194,19 @@ export default function ReceivingView({
       const jobsToSave: Job[] = jobItems.map((item, idx) => {
         const jobId = generateNextComponentId(existingJobs, idx);
 
-        // Combine delivery level files and job specific files
-        const combinedFiles = [...deliveryFiles, ...item.files];
+        // Tag delivery level files (document upload) explicitly as 'delivery' category
+        const taggedDeliveryFiles = deliveryFiles.map(f => ({
+          ...f,
+          category: 'delivery' as const
+        }));
+
+        // Tag job component files as 'job' category if not already set
+        const taggedJobFiles = item.files.map(f => ({
+          ...f,
+          category: f.category || ('job' as const)
+        }));
+
+        const combinedFiles = deduplicateJobFiles([...taggedDeliveryFiles, ...taggedJobFiles]);
 
         return {
           id: jobId,

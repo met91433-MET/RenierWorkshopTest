@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Customer, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT } from './types';
+import { sanitizeJobForFirestoreAsync } from './utils/imageCompressor';
 
 // ==========================================
 // 1. CONFIG / CUSTOM COLUMNS SERVICE
@@ -187,8 +188,9 @@ export async function getJobs(): Promise<Job[]> {
 }
 
 export async function saveJob(job: Job): Promise<void> {
-  await setDoc(doc(db, 'jobs', job.id), {
-    ...job,
+  const sanitizedJob = await sanitizeJobForFirestoreAsync(job);
+  await setDoc(doc(db, 'jobs', sanitizedJob.id), {
+    ...sanitizedJob,
     updatedAt: new Date().toISOString()
   });
 }

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Job, JobFile, CustomColumn, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT } from '../types';
+import { Job, JobFile, CustomColumn, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles } from '../types';
+import { compressFile } from '../utils/imageCompressor';
 import JobCardDocument from './JobCardDocument';
 import { openInNewWindow } from '../utils/printDoc';
 import { 
@@ -104,37 +105,42 @@ export default function JobEnquiriesView({
 
     const fileList: File[] = Array.from(files);
     for (const file of fileList) {
-      if (file.size > 800 * 1024) {
-        alert(`File ${file.name} is too large. Please upload images under 800KB.`);
-        continue;
-      }
-
-      await new Promise<void>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newFiles.push({
-            name: file.name,
-            type: file.type || 'image/jpeg',
-            size: file.size,
-            dataUrl: reader.result as string,
-            uploadedAt: new Date().toISOString(),
-            category: uploadCategory
-          });
-          resolve();
-        };
-        reader.readAsDataURL(file);
+      const { dataUrl, size } = await compressFile(file, 1024, 0.65);
+      newFiles.push({
+        name: file.name,
+        type: file.type.startsWith('image/') ? 'image/jpeg' : file.type,
+        size: size || file.size,
+        dataUrl: dataUrl,
+        uploadedAt: new Date().toISOString(),
+        category: uploadCategory
       });
     }
 
     if (newFiles.length > 0) {
       try {
-        const updatedJob: Job = {
-          ...selectedJob,
-          files: [...(selectedJob.files || []), ...newFiles],
-          updatedAt: new Date().toISOString()
-        };
-        await onUpdateJob(updatedJob);
-        setSelectedJob(updatedJob);
+        if (uploadCategory === 'delivery') {
+          // Sync delivery photo across all jobs on this delivery
+          const deliveryJobs = jobs.filter(j => j.deliveryNoteNumber === selectedJob.deliveryNoteNumber);
+          for (const dJob of deliveryJobs) {
+            const updatedJob: Job = {
+              ...dJob,
+              files: deduplicateJobFiles([...(dJob.files || []), ...newFiles]),
+              updatedAt: new Date().toISOString()
+            };
+            await onUpdateJob(updatedJob);
+            if (dJob.id === selectedJob.id) {
+              setSelectedJob(updatedJob);
+            }
+          }
+        } else {
+          const updatedJob: Job = {
+            ...selectedJob,
+            files: deduplicateJobFiles([...(selectedJob.files || []), ...newFiles]),
+            updatedAt: new Date().toISOString()
+          };
+          await onUpdateJob(updatedJob);
+          setSelectedJob(updatedJob);
+        }
       } catch (err) {
         console.error("Failed to update job with new pictures:", err);
         alert("Failed to save uploaded picture(s).");
@@ -368,7 +374,7 @@ export default function JobEnquiriesView({
       try {
         const updatedJob: Job = {
           ...selectedJob,
-          files: [...(selectedJob.files || []), ...newFiles],
+          files: deduplicateJobFiles([...(selectedJob.files || []), ...newFiles]),
           updatedAt: new Date().toISOString()
         };
         await onUpdateJob(updatedJob);

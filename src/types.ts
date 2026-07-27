@@ -47,6 +47,25 @@ export interface JobFile {
   category?: 'delivery' | 'job' | 'inspection' | string;
 }
 
+export function deduplicateJobFiles(files: JobFile[]): JobFile[] {
+  if (!files || !Array.isArray(files)) return [];
+  const seen = new Set<string>();
+  const result: JobFile[] = [];
+
+  for (const f of files) {
+    if (!f) continue;
+    const dataKey = f.dataUrl ? f.dataUrl.slice(0, 300) : '';
+    const key = `${f.name}_${f.size}_${dataKey}`;
+      
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(f);
+    }
+  }
+
+  return result;
+}
+
 export interface JobInspection {
   inspectorName?: string;
   inspectedAt?: string;

@@ -277,7 +277,7 @@ export default function App() {
   const navigationItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'receiving', label: '1. Job Receiving', icon: FileSpreadsheet, stage: 'Stage 1' },
-    { id: 'inspection', label: '2. QC / Inspection', icon: ClipboardCheck, stage: 'Stage 2' },
+    { id: 'inspection', label: '2. Inspection', icon: ClipboardCheck, stage: 'Stage 2' },
     { id: 'quoting', label: '3. Pre Quote', icon: Calculator, stage: 'Stage 3' },
     { id: 'jobcard', label: '4. Job Card Creation', icon: CalendarRange, stage: 'Stage 4' },
     { id: 'enquiries', label: '5. Job Enquiries', icon: Search, stage: 'Stage 5' },
