@@ -526,12 +526,12 @@ export default function PreQuoteView({
                           className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden"
                         >
                           <option value="">-- Choose step from matrix --</option>
-                          {availablePredefinedSteps.map(name => {
+                          {availablePredefinedSteps.map((name, idx) => {
                             const originalStep = activeMatrix?.steps.find(s => s.stepName === name);
                             const price = selectedJobForMatrix && originalStep ? originalStep.prices[selectedJobForMatrix.modelName] : 0;
                             return (
-                              <option key={name} value={name}>
-                                {name} (${price})
+                              <option key={`${name}-${idx}`} value={name}>
+                                {name} (R{price})
                               </option>
                             );
                           })}
@@ -599,13 +599,13 @@ export default function PreQuoteView({
                         <tr className="bg-slate-50 text-slate-400 uppercase font-semibold border-b border-slate-200 text-[9px] tracking-wider">
                           <th className="p-3 pl-4">Step Description</th>
                           <th className="p-3">Source</th>
-                          <th className="p-3 w-32">Price ($)</th>
+                          <th className="p-3 w-32">Price (R)</th>
                           <th className="p-3 text-right pr-4">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {quoteSteps.map((step, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/40">
+                          <tr key={`${step.stepName}-${idx}`} className="hover:bg-slate-50/40">
                             <td className="p-3 pl-4 font-medium text-slate-800 text-left">
                               {step.stepName}
                             </td>
@@ -618,7 +618,7 @@ export default function PreQuoteView({
                             </td>
                             <td className="p-3">
                               <div className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 py-1 max-w-[110px] bg-white">
-                                <span className="text-slate-400 font-semibold">$</span>
+                                <span className="text-slate-400 font-semibold font-sans text-xs">R</span>
                                 <input
                                   type="number"
                                   value={step.price}
@@ -699,7 +699,7 @@ export default function PreQuoteView({
                   <div className="bg-slate-50 border border-slate-150 rounded-xl p-4 flex flex-col justify-between text-right">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Combined Order Quote</span>
                     <span className="text-2xl font-black text-slate-800 font-display mt-2 flex items-center justify-end gap-1">
-                      <span className="text-sm font-semibold text-slate-400 font-sans">$</span>
+                      <span className="text-sm font-semibold text-slate-400 font-sans">R</span>
                       {totalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>

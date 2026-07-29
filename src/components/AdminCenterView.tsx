@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 import { 
   Customer, 
   ComponentMatrix, 
@@ -40,9 +41,12 @@ import {
   Type,
   Image as ImageIcon,
   Upload,
+  Download,
   Move,
   Sliders,
-  Square
+  Square,
+  Search,
+  X
 } from 'lucide-react';
 
 interface AdminCenterViewProps {
@@ -190,6 +194,83 @@ export default function AdminCenterView({
     alert("Customer deleted.");
   };
 
+  const customerFileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleCustomerExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      if (!firstSheetName) {
+        alert("The uploaded workbook appears to be empty.");
+        return;
+      }
+      const worksheet = workbook.Sheets[firstSheetName];
+      const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+      if (!jsonData || jsonData.length === 0) {
+        alert("No valid customer rows found in the sheet.");
+        return;
+      }
+
+      let count = 0;
+      for (const row of jsonData) {
+        const getVal = (...keys: string[]) => {
+          for (const k of keys) {
+            for (const rowKey of Object.keys(row)) {
+              if (rowKey.trim().toLowerCase() === k.toLowerCase()) {
+                return String(row[rowKey] || '').trim();
+              }
+            }
+          }
+          return '';
+        };
+
+        const name = getVal('Company Name', 'CompanyName', 'Company', 'Customer Name', 'Customer', 'Name');
+        const contactPerson = getVal('Contact Person', 'ContactPerson', 'Contact', 'Person');
+        const email = getVal('Email', 'Email Address', 'EmailAddress', 'Mail');
+        const phone = getVal('Phone Number', 'PhoneNumber', 'Phone', 'Tel', 'Telephone', 'Cell');
+        const address = getVal('Address', 'Physical Address', 'PhysicalAddress', 'Location');
+
+        if (name) {
+          const newCust: Customer = {
+            id: `cust-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            name,
+            contactPerson: contactPerson || undefined,
+            email: email || undefined,
+            phone: phone || undefined,
+            address: address || undefined,
+            createdAt: new Date().toISOString()
+          };
+          await onSaveCustomer(newCust);
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        alert(`Successfully uploaded ${count} customer(s).`);
+      } else {
+        alert("No customers were imported. Please check that the sheet has a 'Company Name' column header.");
+      }
+    } catch (error) {
+      console.error("Error parsing Excel file:", error);
+      alert("Failed to parse Excel file. Please ensure it is a valid .xlsx, .xls, or .csv file.");
+    } finally {
+      if (e.target) {
+        e.target.value = '';
+      }
+    }
+  };
+
+  // Search states for tables
+  const [matrixSearchQuery, setMatrixSearchQuery] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [custSearchQuery, setCustSearchQuery] = useState('');
+  const [columnSearchQuery, setColumnSearchQuery] = useState('');
+
   // ========================================================
   // 4. STATE FOR COMPONENT PRICING MATRICES (VERY CRITICAL!)
   // ========================================================
@@ -200,6 +281,59 @@ export default function AdminCenterView({
   const activeMatrix = componentsList.find(c => c.id === selectedCompMatrixId);
   const [newModelColumnName, setNewModelColumnName] = useState('');
   const [newStepRowName, setNewStepRowName] = useState('');
+  const [addEntryType, setAddEntryType] = useState<'step' | 'model'>('step');
+  const [addEntryValue, setAddEntryValue] = useState('');
+
+  // Unified add entry (Step or Model) handler
+  const handleUnifiedAddEntry = async () => {
+    if (!addEntryValue.trim() || !activeMatrix) return;
+    const cleanValue = addEntryValue.trim();
+
+    if (addEntryType === 'model') {
+      if (activeMatrix.models.some(m => m.toLowerCase() === cleanValue.toLowerCase())) {
+        alert("This model already exists in the matrix.");
+        return;
+      }
+      const updatedModels = [...activeMatrix.models, cleanValue];
+      const updatedSteps = activeMatrix.steps.map(step => ({
+        ...step,
+        prices: {
+          ...step.prices,
+          [cleanValue]: 0
+        }
+      }));
+      const updatedMatrix: ComponentMatrix = {
+        ...activeMatrix,
+        models: updatedModels,
+        steps: updatedSteps,
+        updatedAt: new Date().toISOString()
+      };
+      await onSaveComponentMatrix(updatedMatrix);
+      setAddEntryValue('');
+      alert(`Model '${cleanValue}' added.`);
+    } else {
+      if (activeMatrix.steps.some(s => s.stepName.toLowerCase() === cleanValue.toLowerCase())) {
+        alert("This step row already exists.");
+        return;
+      }
+      const initialPrices: { [model: string]: number } = {};
+      activeMatrix.models.forEach(model => {
+        initialPrices[model] = 0;
+      });
+      const newStepObj: ComponentStep = {
+        stepName: cleanValue,
+        prices: initialPrices
+      };
+      const updatedMatrix: ComponentMatrix = {
+        ...activeMatrix,
+        steps: [...activeMatrix.steps, newStepObj],
+        updatedAt: new Date().toISOString()
+      };
+      await onSaveComponentMatrix(updatedMatrix);
+      setAddEntryValue('');
+      alert(`Step row '${cleanValue}' added.`);
+    }
+  };
 
   // Handle price edits in cell matrix
   const handleMatrixCellPriceChange = async (stepName: string, modelName: string, value: string) => {
@@ -328,6 +462,138 @@ export default function AdminCenterView({
     await onDeleteComponentMatrix(id);
     setSelectedCompMatrixId(componentsList[0]?.id || '');
     alert("Pricing table deleted.");
+  };
+
+  // Excel File Upload for Pricing Matrix
+  const handleExcelFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, createAsNew = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const buffer = evt.target?.result as ArrayBuffer;
+        const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+          alert("No sheets found in the Excel workbook.");
+          return;
+        }
+
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rawData: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+        if (!rawData || rawData.length < 2) {
+          alert("The Excel sheet must contain at least a header row (for models) and one data row (for steps).");
+          return;
+        }
+
+        // Row 0 is the header:
+        // Col 0: Step Label (e.g. "Steps")
+        // Col 1..N: Model names
+        const headerRow = rawData[0] || [];
+        const extractedModels: string[] = [];
+
+        for (let col = 1; col < headerRow.length; col++) {
+          const colVal = headerRow[col];
+          if (colVal !== undefined && colVal !== null && String(colVal).trim() !== '') {
+            extractedModels.push(String(colVal).trim());
+          }
+        }
+
+        if (extractedModels.length === 0) {
+          alert("No model names found in the first row starting from Column 2.");
+          return;
+        }
+
+        // Row 1..N: Steps & prices
+        const extractedSteps: ComponentStep[] = [];
+
+        for (let rowIdx = 1; rowIdx < rawData.length; rowIdx++) {
+          const row = rawData[rowIdx];
+          if (!row || row.length === 0) continue;
+
+          const rawStepName = row[0];
+          if (rawStepName === undefined || rawStepName === null || String(rawStepName).trim() === '') {
+            continue; // Skip empty rows
+          }
+
+          const stepName = String(rawStepName).trim();
+          const prices: { [modelName: string]: number } = {};
+
+          extractedModels.forEach((modelName, modelIdx) => {
+            const colIdx = modelIdx + 1;
+            const rawCellVal = row[colIdx];
+            let numVal = 0;
+
+            if (typeof rawCellVal === 'number') {
+              numVal = isNaN(rawCellVal) ? 0 : rawCellVal;
+            } else if (rawCellVal) {
+              const cleanStr = String(rawCellVal).replace(/[^0-9.-]+/g, '');
+              numVal = parseFloat(cleanStr) || 0;
+            }
+
+            prices[modelName] = numVal;
+          });
+
+          extractedSteps.push({
+            stepName,
+            prices
+          });
+        }
+
+        if (extractedSteps.length === 0) {
+          alert("No valid step rows found in the uploaded file.");
+          return;
+        }
+
+        // Determine target matrix ID and name
+        const fileNameNoExt = file.name.replace(/\.[^/.]+$/, "").trim();
+        let targetId = activeMatrix && !createAsNew ? activeMatrix.id : (newComponentName.trim() || fileNameNoExt || `Matrix-${Date.now()}`);
+        let targetName = activeMatrix && !createAsNew ? activeMatrix.name : (newComponentName.trim() || fileNameNoExt || "Uploaded Pricing Matrix");
+
+        if (createAsNew && componentsList.some(c => c.id.toLowerCase() === targetId.toLowerCase())) {
+          targetId = `${targetId}-${Date.now()}`;
+        }
+
+        const newMatrixObj: ComponentMatrix = {
+          id: targetId,
+          name: targetName,
+          models: extractedModels,
+          steps: extractedSteps,
+          updatedAt: new Date().toISOString()
+        };
+
+        await onSaveComponentMatrix(newMatrixObj);
+        setSelectedCompMatrixId(targetId);
+        setNewComponentName('');
+        alert(`Successfully imported Excel Pricing Table!\n\n• Table Name: ${targetName}\n• Models (Columns): ${extractedModels.length}\n• Steps (Rows): ${extractedSteps.length}`);
+      } catch (err) {
+        console.error("Error reading Excel file:", err);
+        alert("Error parsing Excel file. Please ensure it is a valid .xlsx, .xls, or .csv file.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = '';
+  };
+
+  const downloadSampleExcelTemplate = () => {
+    const sampleData = [
+      ["Steps / Repair Operations", "CAT 320", "Komatsu PC200", "Hitachi ZX200", "Liebherr R924"],
+      ["1. Disassembly & Wash", 1500, 1600, 1550, 1800],
+      ["2. QC & Failure Analysis", 800, 850, 800, 950],
+      ["3. Sandblasting & Pre-Clean", 1200, 1250, 1200, 1400],
+      ["4. Cylindrical Honing", 2500, 2700, 2600, 3100],
+      ["5. Hard Chrome Plating", 4500, 4800, 4600, 5200],
+      ["6. Seal Kit Installation & Reassembly", 1800, 1950, 1850, 2100],
+      ["7. Pressure Testing & Hard Stamp", 950, 1000, 950, 1100]
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(sampleData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Pricing Matrix");
+    XLSX.writeFile(workbook, "Pricing_Matrix_Template.xlsx");
   };
 
   // ========================================================
@@ -463,17 +729,6 @@ export default function AdminCenterView({
           Component Pricing Matrices (Excel Style)
         </button>
         <button
-          onClick={() => setActiveSubTab('columns')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
-            activeSubTab === 'columns'
-              ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
-          }`}
-        >
-          <Grid className="w-4 h-4" />
-          Dynamic Receiving Columns
-        </button>
-        <button
           onClick={() => setActiveSubTab('customers')}
           className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
             activeSubTab === 'customers'
@@ -482,7 +737,7 @@ export default function AdminCenterView({
           }`}
         >
           <Briefcase className="w-4 h-4" />
-          Customer Accounts Directory
+          Customers Directory
         </button>
         <button
           onClick={() => setActiveSubTab('jobCard')}
@@ -502,9 +757,30 @@ export default function AdminCenterView({
           ======================================================== */}
       {activeSubTab === 'users' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
-          <div className="p-5 border-b border-slate-200 bg-slate-50/40">
-            <h2 className="text-sm font-bold text-slate-700">Workshop Users & Feature Clearances</h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">Toggle booleans to restrict actions. E.g. Unchecking 'Pre-Quoting' bars users from editing price lines.</p>
+          <div className="p-5 border-b border-slate-200 bg-slate-50/40 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-700">Workshop Users & Feature Clearances</h2>
+              <p className="text-[11px] text-slate-400 mt-0.5">Toggle booleans to restrict actions. E.g. Unchecking 'Pre-Quoting' bars users from editing price lines.</p>
+            </div>
+            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-blue-500 shadow-2xs shrink-0">
+              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                placeholder="Search user or email..."
+                value={userSearchQuery}
+                onChange={(e) => setUserSearchQuery(e.target.value)}
+                className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-40 font-medium text-slate-700 placeholder:text-slate-400"
+              />
+              {userSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setUserSearchQuery('')}
+                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -522,7 +798,11 @@ export default function AdminCenterView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {users.map((user) => {
+                {users.filter(u => {
+                  if (!userSearchQuery.trim()) return true;
+                  const q = userSearchQuery.toLowerCase();
+                  return (u.displayName || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+                }).map((user) => {
                   const isEditing = editingUserUid === user.uid;
                   const perms = isEditing ? tempPermissions! : user.permissions;
 
@@ -668,11 +948,20 @@ export default function AdminCenterView({
 
             {/* Create brand new component type */}
             <form onSubmit={handleCreateNewComponentTable} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2 space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Create New Component Pricing Table</h3>
-              <div className="flex gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Create New Component Pricing Table</h3>
+                <button
+                  type="button"
+                  onClick={downloadSampleExcelTemplate}
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors"
+                >
+                  <Download className="w-3 h-3 text-emerald-600" />
+                  Sample Excel Template
+                </button>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
-                  required
                   placeholder="e.g. Steering Cylinder, Front Axel"
                   value={newComponentName}
                   onChange={(e) => setNewComponentName(e.target.value)}
@@ -680,220 +969,226 @@ export default function AdminCenterView({
                 />
                 <button
                   type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-4 py-2 text-xs transition-all cursor-pointer flex items-center gap-1"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-4 py-2 text-xs transition-all cursor-pointer flex items-center justify-center gap-1"
                 >
                   <Plus className="w-4 h-4" />
                   Create Table
                 </button>
+                <label className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 select-none">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  Upload Excel Table
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={(e) => handleExcelFileUpload(e, true)}
+                    className="hidden"
+                  />
+                </label>
               </div>
             </form>
           </div>
 
           {/* SPREADSHEET MATRIX DESIGN */}
-          {activeMatrix ? (
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
-              {/* Top Controls: Add Model Column / Add Step Row */}
-              <div className="p-5 border-b border-slate-200 bg-slate-50/40 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-bold text-slate-800 font-display">Spreadsheet: {activeMatrix.name} Pricing Matrix</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Steps are rows, Models are columns. Cell intersections specify pre-quoted prices.</p>
-                </div>
+          {activeMatrix ? (() => {
+            const query = matrixSearchQuery.trim().toLowerCase();
 
-                <div className="flex flex-col sm:flex-row gap-3">
-                  {/* Add model column */}
-                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5">
-                    <input
-                      type="text"
-                      placeholder="New Model Column"
-                      value={newModelColumnName}
-                      onChange={(e) => setNewModelColumnName(e.target.value)}
-                      className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-28 font-semibold text-slate-700"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddNewModelColumn}
-                      disabled={!newModelColumnName.trim()}
-                      className="text-blue-600 hover:text-blue-700 disabled:opacity-55 font-bold text-[11px] bg-blue-50 border px-2 py-1 rounded-lg"
-                    >
-                      + Add Col
-                    </button>
+            let displayModels = activeMatrix.models;
+            let displaySteps = activeMatrix.steps;
+
+            if (query) {
+              const modelMatches = activeMatrix.models.filter(m => m.toLowerCase().includes(query));
+              const stepMatches = activeMatrix.steps.filter(s => {
+                if (s.stepName.toLowerCase().includes(query)) return true;
+                if (!isNaN(Number(query)) && Object.values(s.prices).some(p => p !== undefined && p !== null && p.toString().includes(query))) return true;
+                return false;
+              });
+
+              const isModelMatch = modelMatches.length > 0;
+              const isStepMatch = stepMatches.length > 0;
+
+              if (isModelMatch) {
+                // When query matches a model (e.g. "773"), show matching model column(s) with ALL step rows
+                displayModels = modelMatches;
+                displaySteps = activeMatrix.steps;
+              } else if (isStepMatch) {
+                // When query matches a step/operation, show matching step row(s) across ALL model columns
+                displayModels = activeMatrix.models;
+                displaySteps = stepMatches;
+              } else {
+                displayModels = [];
+                displaySteps = [];
+              }
+            }
+
+            return (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-0">
+                {/* Top Controls: Search / Joined Add Slider */}
+                <div className="p-5 border-b border-slate-200 bg-slate-50/40 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                      Spreadsheet: {activeMatrix.name} Pricing Matrix
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Steps are rows, Models are columns. Cell intersections specify pre-quoted prices in Rand (R).</p>
                   </div>
 
-                  {/* Add step row */}
-                  <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2.5 py-1.5">
-                    <input
-                      type="text"
-                      placeholder="New Step Row"
-                      value={newStepRowName}
-                      onChange={(e) => setNewStepRowName(e.target.value)}
-                      className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-28 font-semibold text-slate-700"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddNewStepRow}
-                      disabled={!newStepRowName.trim()}
-                      className="text-purple-600 hover:text-purple-700 disabled:opacity-55 font-bold text-[11px] bg-purple-50 border px-2 py-1 rounded-lg"
-                    >
-                      + Add Row
-                    </button>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {/* Search Input for Model / Operation */}
+                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-blue-500 shadow-2xs">
+                      <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Search model / operation..."
+                        value={matrixSearchQuery}
+                        onChange={(e) => setMatrixSearchQuery(e.target.value)}
+                        className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-38 sm:w-44 font-medium text-slate-700 placeholder:text-slate-400"
+                      />
+                      {matrixSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setMatrixSearchQuery('')}
+                          className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Joined Add Control with Slider Toggle */}
+                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1.5 shadow-2xs">
+                      {/* Segmented Slider Selector */}
+                      <div className="relative flex items-center bg-slate-100 rounded-lg p-0.5 select-none font-bold text-[11px]">
+                        <button
+                          type="button"
+                          onClick={() => setAddEntryType('step')}
+                          className={`relative z-10 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                            addEntryType === 'step'
+                              ? 'bg-purple-600 text-white shadow-xs font-bold'
+                              : 'text-slate-500 hover:text-slate-700 font-semibold'
+                          }`}
+                        >
+                          + Step
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAddEntryType('model')}
+                          className={`relative z-10 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                            addEntryType === 'model'
+                              ? 'bg-blue-600 text-white shadow-xs font-bold'
+                              : 'text-slate-500 hover:text-slate-700 font-semibold'
+                          }`}
+                        >
+                          + Model
+                        </button>
+                      </div>
+
+                      <input
+                        type="text"
+                        placeholder={addEntryType === 'step' ? "New Step Row..." : "New Model Col..."}
+                        value={addEntryValue}
+                        onChange={(e) => setAddEntryValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleUnifiedAddEntry();
+                          }
+                        }}
+                        className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-28 sm:w-36 font-semibold text-slate-700 placeholder:text-slate-400"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={handleUnifiedAddEntry}
+                        disabled={!addEntryValue.trim()}
+                        className={`font-bold text-[11px] px-3 py-1 rounded-lg cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed text-white shrink-0 ${
+                          addEntryType === 'step' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
+                        }`}
+                      >
+                        Add
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* SpreadSheet HTML Table */}
-              <div className="p-4 overflow-x-auto">
-                <table className="w-full border-collapse border border-slate-200 text-xs">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-600 font-semibold text-left">
-                      <th className="border border-slate-200 p-3 bg-slate-150 text-slate-700 font-bold w-48">Steps / Repair Operations</th>
-                      {activeMatrix.models.map(model => (
-                        <th key={model} className="border border-slate-200 p-3 bg-blue-50/40 text-blue-800 font-bold text-center min-w-32">
-                          {model}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeMatrix.steps.map(step => (
-                      <tr key={step.stepName} className="hover:bg-slate-50/50">
-                        {/* Step Label Row */}
-                        <td className="border border-slate-200 p-3 bg-slate-50 text-slate-700 font-bold">
-                          {step.stepName}
-                        </td>
+                {/* Excel Format Instructions Banner */}
+                <div className="px-5 py-2.5 bg-emerald-50/60 border-b border-emerald-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-emerald-800">
+                  <div className="flex items-center gap-2 font-medium text-[11px]">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      <strong>Excel Format:</strong> Column 1 contains steps/operations. Columns 2+ contain model names. Cell intersections set prices in Rand (R).
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={downloadSampleExcelTemplate}
+                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <Download className="w-3 h-3" /> Download Sample .xlsx
+                  </button>
+                </div>
 
-                        {/* Cells corresponding to model columns */}
-                        {activeMatrix.models.map(model => {
-                          const val = step.prices[model] !== undefined ? step.prices[model] : '';
-                          return (
-                            <td key={model} className="border border-slate-200 p-2 text-center">
-                              <div className="flex items-center gap-1.5 border border-slate-200 bg-white rounded-lg px-2.5 py-1.5 justify-center max-w-[120px] mx-auto focus-within:border-blue-500 transition-colors">
-                                <span className="text-slate-400 font-semibold font-sans">$</span>
-                                <input
-                                  type="number"
-                                  value={val}
-                                  onChange={(e) => handleMatrixCellPriceChange(step.stepName, model, e.target.value)}
-                                  className="w-full bg-transparent border-0 p-0 text-center font-bold text-slate-800 text-xs focus:ring-0 focus:outline-hidden"
-                                />
-                              </div>
+                {/* SpreadSheet HTML Table - Scroll view showing ~15 steps at a time with sticky headers */}
+                <div className="p-4">
+                  <div className="max-h-[600px] overflow-auto border border-slate-200 rounded-xl shadow-2xs relative">
+                    <table className="w-full border-collapse text-[10px]">
+                      <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs">
+                        <tr className="bg-slate-100 text-slate-600 font-semibold text-left">
+                          <th className="border border-slate-200 p-2.5 bg-slate-150 text-slate-700 font-bold w-48 text-[10px] sticky top-0 left-0 z-30 shadow-2xs">
+                            Steps / Repair Operations ({displaySteps.length})
+                          </th>
+                          {displayModels.map((model, mIdx) => (
+                            <th key={`${model}-${mIdx}`} className="border border-slate-200 p-2.5 bg-blue-50/90 text-blue-900 font-bold text-center min-w-28 text-[10px] sticky top-0 z-20 backdrop-blur-xs">
+                              {model}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displaySteps.map((step, sIdx) => (
+                          <tr key={`${step.stepName}-${sIdx}`} className="hover:bg-slate-50/80 transition-colors">
+                            {/* Step Label Row */}
+                            <td className="border border-slate-200 p-2 bg-slate-50 text-slate-700 font-bold text-[10px] sticky left-0 z-10 shadow-2xs">
+                              {step.stepName}
                             </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                    {activeMatrix.steps.length === 0 && (
-                      <tr>
-                        <td colSpan={activeMatrix.models.length + 1} className="p-6 text-center text-slate-400 italic">
-                          No step rows created yet. Use the control panel at the top right to create your first step row!
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+
+                            {/* Cells corresponding to model columns */}
+                            {displayModels.map((model, mIdx) => {
+                              const val = step.prices[model] !== undefined ? step.prices[model] : '';
+                              return (
+                                <td key={`${model}-${mIdx}`} className="border border-slate-200 p-1.5 text-center bg-white">
+                                  <div className="flex items-center gap-1 border border-slate-200 bg-white rounded-md px-2 py-1 justify-center max-w-[105px] mx-auto focus-within:border-blue-500 transition-colors">
+                                    <span className="text-slate-400 font-bold font-sans text-[10px]">R</span>
+                                    <input
+                                      type="number"
+                                      value={val}
+                                      onChange={(e) => handleMatrixCellPriceChange(step.stepName, model, e.target.value)}
+                                      className="w-full bg-transparent border-0 p-0 text-center font-bold text-slate-800 text-[10px] focus:ring-0 focus:outline-hidden"
+                                    />
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                        {displaySteps.length === 0 && (
+                          <tr>
+                            <td colSpan={displayModels.length + 1} className="p-6 text-center text-slate-400 italic text-[11px]">
+                              {query ? `No models or step operations found matching "${matrixSearchQuery}".` : 'No step rows created yet. Use "+ Add Step" above to create your first step row!'}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
-            </div>
-          ) : (
+            );
+          })() : (
             <div className="bg-white p-12 rounded-2xl border border-slate-200 shadow-sm text-center text-slate-400">
               <AlertCircle className="w-12 h-12 mx-auto mb-2 text-slate-300" />
               <h3 className="font-semibold text-slate-700">No Component Matrices Found</h3>
               <p className="text-xs mt-1">Please create a component matrix table above to start managing Repair steps and Model pricing.</p>
             </div>
           )}
-        </div>
-      )}
-
-      {/* ========================================================
-          TAB 3: DYNAMIC RECEIVING COLUMNS
-          ======================================================== */}
-      {activeSubTab === 'columns' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-left">
-          {/* Add column card */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit">
-            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Add Custom Column</h2>
-            <p className="text-xs text-slate-500">
-              Create customizable text, number, or date attributes that are dynamically generated inside Job Receiving delivery forms.
-            </p>
-
-            <div className="space-y-3 pt-2">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Column Label / Field Title</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Transport Plate No"
-                  value={newColLabel}
-                  onChange={(e) => setNewColLabel(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Field Input Type</label>
-                <select
-                  value={newColType}
-                  onChange={(e: any) => setNewColType(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs focus:outline-hidden"
-                >
-                  <option value="text">Single-line Text Input</option>
-                  <option value="number">Numeric / Digits Only</option>
-                  <option value="date">Calendar Date Picker</option>
-                </select>
-              </div>
-
-              <button
-                onClick={addCustomColumn}
-                disabled={!newColLabel.trim()}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-55 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer select-none"
-              >
-                Create Dynamic Field Column
-              </button>
-            </div>
-          </div>
-
-          {/* List existing columns card */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2 space-y-4">
-            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Active Custom Receiving Columns</h2>
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-400 font-semibold border-b border-slate-200 text-[10px] uppercase">
-                    <th className="p-3 pl-4">Backend ID</th>
-                    <th className="p-3">Field Title (Form Label)</th>
-                    <th className="p-3">Field Type</th>
-                    <th className="p-3 text-right pr-4">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {customColumns.map(col => (
-                    <tr key={col.id} className="hover:bg-slate-50/50">
-                      <td className="p-3 pl-4 font-mono text-slate-500 font-semibold text-[11px]">
-                        {col.id}
-                      </td>
-                      <td className="p-3 font-semibold text-slate-700">
-                        {col.label}
-                      </td>
-                      <td className="p-3 capitalize font-medium text-slate-500">
-                        {col.type === 'text' ? 'Text String' : col.type === 'number' ? 'Numeric' : 'Date Picker'}
-                      </td>
-                      <td className="p-3 text-right pr-4">
-                        <button
-                          onClick={() => deleteCustomColumn(col.id)}
-                          className="text-red-500 hover:text-red-700 p-1.5 hover:bg-red-50 rounded-lg"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {customColumns.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="p-6 text-center text-slate-400 italic">
-                        No custom receiving columns configured. Create one using the form on the left!
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       )}
 
@@ -965,21 +1260,46 @@ export default function AdminCenterView({
                 />
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
-                >
-                  {editingCustomer ? 'Update Account' : 'Add Customer'}
-                </button>
-                {editingCustomer && (
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex gap-2">
                   <button
-                    type="button"
-                    onClick={() => handleEditCustomer(null)}
-                    className="bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition-colors"
+                    type="submit"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
                   >
-                    Cancel
+                    {editingCustomer ? 'Update Account' : 'Add Customer'}
                   </button>
+                  {editingCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => handleEditCustomer(null)}
+                      className="bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+                {!editingCustomer && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <input
+                      type="file"
+                      ref={customerFileInputRef}
+                      onChange={handleCustomerExcelUpload}
+                      accept=".xlsx, .xls, .csv"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => customerFileInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Upload
+                    </button>
+                    <p className="text-[10px] text-slate-400 text-center mt-1">
+                      Batch import via Excel (.xlsx). Columns: Company Name, Contact Person, Email, Phone Number, Address.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
@@ -987,7 +1307,28 @@ export default function AdminCenterView({
 
           {/* Customer list table */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2 space-y-4">
-            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Registered Client Directories ({customers.length})</h2>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Customers Directory ({customers.length})</h2>
+              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-blue-500 shadow-2xs">
+                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Search company or contact..."
+                  value={custSearchQuery}
+                  onChange={(e) => setCustSearchQuery(e.target.value)}
+                  className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-40 font-medium text-slate-700 placeholder:text-slate-400"
+                />
+                {custSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setCustSearchQuery('')}
+                    className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="w-full text-xs text-left">
                 <thead>
@@ -999,7 +1340,16 @@ export default function AdminCenterView({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {customers.map(cust => (
+                  {customers.filter(cust => {
+                    if (!custSearchQuery.trim()) return true;
+                    const q = custSearchQuery.toLowerCase();
+                    return (
+                      cust.name.toLowerCase().includes(q) ||
+                      (cust.contactPerson || '').toLowerCase().includes(q) ||
+                      (cust.email || '').toLowerCase().includes(q) ||
+                      (cust.phone || '').toLowerCase().includes(q)
+                    );
+                  }).map(cust => (
                     <tr key={cust.id} className="hover:bg-slate-50/50">
                       <td className="p-3 pl-4">
                         <p className="font-bold text-slate-700">{cust.name}</p>
@@ -1515,7 +1865,7 @@ export default function AdminCenterView({
 
                 {/* Simulated A4 Portrait Job Card Document */}
                 <div className="p-4 bg-slate-200/80 overflow-y-auto max-h-[780px] flex justify-center">
-                  <div className="w-full max-w-[500px]">
+                  <div className="w-full max-w-[580px]">
                     <JobCardDocument format={formatConfig} page={previewPage} />
                   </div>
                 </div>

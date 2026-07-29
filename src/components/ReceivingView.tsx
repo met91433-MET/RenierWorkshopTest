@@ -413,8 +413,8 @@ export default function ReceivingView({
                             onChange={(e) => updateJobItem(idx, 'modelName', e.target.value)}
                             className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-hidden focus:border-blue-500"
                           >
-                            {availableModels.map(m => (
-                              <option key={m} value={m}>{m}</option>
+                            {availableModels.map((m, mIdx) => (
+                              <option key={`${m}-${mIdx}`} value={m}>{m}</option>
                             ))}
                             {availableModels.length === 0 && (
                               <option value="">-- No models found --</option>
