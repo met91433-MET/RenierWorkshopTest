@@ -1,6 +1,6 @@
 {
   "name": "MES Workshop3",
   "description": "An ERP-style job-driven tracking and workshop management platform for capturing, inspecting, quoting, card creation, and closing repair jobs.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

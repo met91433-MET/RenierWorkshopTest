@@ -177,6 +177,78 @@
         }
       },
       "required": ["id"]
+    },
+    "Machine": {
+      "title": "Machine Equipment",
+      "description": "Plant machinery equipment specification and record card",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "machineName": { "type": "string" },
+        "serialNumber": { "type": "string" },
+        "model": { "type": "string" },
+        "make": { "type": "string" },
+        "customerName": { "type": "string" },
+        "location": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "machineName", "serialNumber"]
+    },
+    "ToolStockItem": {
+      "title": "Tool Stock Item",
+      "description": "Tool inventory item with sign out tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "typeSize": { "type": "string" },
+        "quantity": { "type": "number" },
+        "addedDate": { "type": "string" },
+        "employeeNumber": { "type": "string" },
+        "signOutDate": { "type": "string" },
+        "dateReturn": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "description", "typeSize"]
+    },
+    "ConsumableItem": {
+      "title": "Consumable Item",
+      "description": "Workshop consumable item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "typeSize": { "type": "string" },
+        "quantity": { "type": "number" },
+        "addedDate": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "description", "typeSize", "quantity"]
+    },
+    "ConsumableAllocationLog": {
+      "title": "Consumable Allocation Log",
+      "description": "Log of consumable allocation to employee, job and machine",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "consumableId": { "type": "string" },
+        "consumableDescription": { "type": "string" },
+        "consumableTypeSize": { "type": "string" },
+        "clockNumber": { "type": "string" },
+        "jobNumber": { "type": "string" },
+        "machineNumber": { "type": "string" },
+        "quantityAllocated": { "type": "number" },
+        "allocatedAt": { "type": "string" },
+        "loggedBy": { "type": "string" }
+      },
+      "required": ["id", "consumableId", "clockNumber", "jobNumber"]
     }
   },
   "firestore": {
@@ -196,9 +268,25 @@
       "schema": "Job",
       "description": "Active and closed repair job cards"
     },
+    "/machines/{machineId}": {
+      "schema": "Machine",
+      "description": "Machine equipment records and specs"
+    },
     "/config/{configId}": {
       "schema": "Config",
       "description": "Global settings such as dynamic table columns"
+    },
+    "/tool_stock/{toolId}": {
+      "schema": "ToolStockItem",
+      "description": "Tool stock items and sign out tracking"
+    },
+    "/consumables/{consumableId}": {
+      "schema": "ConsumableItem",
+      "description": "Workshop consumable supplies"
+    },
+    "/consumable_allocations/{allocationId}": {
+      "schema": "ConsumableAllocationLog",
+      "description": "Audit trail of consumable issues"
     }
   }
 }

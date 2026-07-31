@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Job, JobFile, CustomColumn, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles } from '../types';
 import { compressFile } from '../utils/imageCompressor';
 import JobCardDocument from './JobCardDocument';
+import CameraCaptureModal from './CameraCaptureModal';
 import { openInNewWindow } from '../utils/printDoc';
 import { 
   Archive, 
@@ -68,6 +69,8 @@ export default function JobEnquiriesView({
   const [pictureCategoryFilter, setPictureCategoryFilter] = useState<'all' | 'delivery' | 'job' | 'inspection'>('all');
   const [uploadCategory, setUploadCategory] = useState<'delivery' | 'job' | 'inspection'>('job');
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [cameraOverrideCategory, setCameraOverrideCategory] = useState<'delivery' | 'job' | 'inspection' | undefined>(undefined);
   const [deletingFileIndex, setDeletingFileIndex] = useState<number | null>(null);
   const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<{ url: string; name: string; category?: string; uploadedAt?: string; size?: number; originalIdx?: number } | null>(null);
@@ -96,14 +99,13 @@ export default function JobEnquiriesView({
     return 'job';
   };
 
-  const handleUploadPictures = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || !selectedJob) return;
+  const processPhotoFiles = async (fileList: File[], categoryOverride?: 'delivery' | 'job' | 'inspection') => {
+    if (!fileList || fileList.length === 0 || !selectedJob) return;
 
+    const targetCat = categoryOverride || uploadCategory;
     setIsUploadingPhoto(true);
     const newFiles: JobFile[] = [];
 
-    const fileList: File[] = Array.from(files);
     for (const file of fileList) {
       const { dataUrl, size } = await compressFile(file, 1024, 0.65);
       newFiles.push({
@@ -112,13 +114,13 @@ export default function JobEnquiriesView({
         size: size || file.size,
         dataUrl: dataUrl,
         uploadedAt: new Date().toISOString(),
-        category: uploadCategory
+        category: targetCat
       });
     }
 
     if (newFiles.length > 0) {
       try {
-        if (uploadCategory === 'delivery') {
+        if (targetCat === 'delivery') {
           // Sync delivery photo across all jobs on this delivery
           const deliveryJobs = jobs.filter(j => j.deliveryNoteNumber === selectedJob.deliveryNoteNumber);
           for (const dJob of deliveryJobs) {
@@ -147,6 +149,13 @@ export default function JobEnquiriesView({
       }
     }
     setIsUploadingPhoto(false);
+  };
+
+  const handleUploadPictures = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || !selectedJob) return;
+
+    await processPhotoFiles(Array.from(files));
     e.target.value = '';
   };
 
@@ -344,47 +353,7 @@ export default function JobEnquiriesView({
     const files = e.target.files;
     if (!files || !selectedJob) return;
 
-    setIsUploadingPhoto(true);
-    const newFiles: JobFile[] = [];
-    const fileList: File[] = Array.from(files);
-
-    for (const file of fileList) {
-      if (file.size > 800 * 1024) {
-        alert(`File ${file.name} is too large. Please upload images under 800KB.`);
-        continue;
-      }
-      await new Promise<void>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          newFiles.push({
-            name: file.name,
-            type: file.type || 'image/jpeg',
-            size: file.size,
-            dataUrl: reader.result as string,
-            uploadedAt: new Date().toISOString(),
-            category: 'inspection'
-          });
-          resolve();
-        };
-        reader.readAsDataURL(file);
-      });
-    }
-
-    if (newFiles.length > 0) {
-      try {
-        const updatedJob: Job = {
-          ...selectedJob,
-          files: deduplicateJobFiles([...(selectedJob.files || []), ...newFiles]),
-          updatedAt: new Date().toISOString()
-        };
-        await onUpdateJob(updatedJob);
-        setSelectedJob(updatedJob);
-      } catch (err) {
-        console.error("Failed to upload inspection photo:", err);
-        alert("Failed to save uploaded inspection photo.");
-      }
-    }
-    setIsUploadingPhoto(false);
+    await processPhotoFiles(Array.from(files), 'inspection');
     e.target.value = '';
   };
 
@@ -638,7 +607,7 @@ export default function JobEnquiriesView({
                   <tr 
                     key={job.id} 
                     className="hover:bg-slate-50/70 transition-colors group cursor-pointer font-medium"
-                    onClick={() => handleSelectJob(job, !hasGoAhead(job) && job.status !== 'Closed' ? 'goAhead' : 'overview')}
+                    onClick={() => handleSelectJob(job, 'overview')}
                   >
                     <td className="p-4 pl-6 font-bold text-slate-900 font-mono tracking-wider">
                       {job.jobCardDetails?.jobCardNumber ? (
@@ -777,22 +746,6 @@ export default function JobEnquiriesView({
             {/* Sub-tab Navigation Bar */}
             <div className="bg-slate-100 border-b border-slate-200 px-6 py-2 flex items-center justify-between gap-2 flex-shrink-0 overflow-x-auto">
               <div className="flex items-center gap-2">
-                {selectedJob.status !== 'Closed' && (
-                  <button
-                    onClick={() => setModalTab('goAhead')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                      modalTab === 'goAhead'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : !hasGoAhead(selectedJob)
-                        ? 'bg-amber-100 text-amber-900 border border-amber-300 font-extrabold animate-pulse'
-                        : 'bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    {!hasGoAhead(selectedJob) ? 'Add to Go-Ahead' : 'Go-Ahead Order Info'}
-                  </button>
-                )}
-
                 <button
                   onClick={() => setModalTab('overview')}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
@@ -1209,18 +1162,32 @@ export default function JobEnquiriesView({
                         </div>
 
                         {/* Quick Upload Action */}
-                        <label className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm shrink-0">
-                          <Upload className="w-4 h-4" />
-                          <span>Upload New Photos</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={handleUploadPictures}
-                            className="hidden"
-                            disabled={isUploadingPhoto}
-                          />
-                        </label>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCameraOverrideCategory(uploadCategory);
+                              setIsCameraModalOpen(true);
+                            }}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                          >
+                            <Camera className="w-4 h-4" />
+                            <span>Take Photo</span>
+                          </button>
+
+                          <label className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm">
+                            <Upload className="w-4 h-4" />
+                            <span>Upload Photos</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={handleUploadPictures}
+                              className="hidden"
+                              disabled={isUploadingPhoto}
+                            />
+                          </label>
+                        </div>
                       </div>
 
                       {/* Category Filter Pills & Target Upload Selector */}
@@ -1430,18 +1397,32 @@ export default function JobEnquiriesView({
                             ? 'No photos have been uploaded for this job yet.'
                             : `No ${pictureCategoryFilter} photos recorded for this job.`}
                         </p>
-                        <label className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs mt-4 cursor-pointer shadow-xs transition-all">
-                          <Upload className="w-4 h-4" />
-                          <span>Upload {pictureCategoryFilter !== 'all' ? pictureCategoryFilter : 'Job'} Photo Now</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={handleUploadPictures}
-                            className="hidden"
-                            disabled={isUploadingPhoto}
-                          />
-                        </label>
+                        <div className="flex items-center justify-center gap-2 mt-4">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCameraOverrideCategory(pictureCategoryFilter !== 'all' ? pictureCategoryFilter : uploadCategory);
+                              setIsCameraModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shadow-xs transition-all"
+                          >
+                            <Camera className="w-4 h-4" />
+                            <span>Take Photo Now</span>
+                          </button>
+
+                          <label className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shadow-xs transition-all">
+                            <Upload className="w-4 h-4" />
+                            <span>Upload {pictureCategoryFilter !== 'all' ? pictureCategoryFilter : 'Job'} Photo</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              onChange={handleUploadPictures}
+                              className="hidden"
+                              disabled={isUploadingPhoto}
+                            />
+                          </label>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1809,9 +1790,21 @@ export default function JobEnquiriesView({
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-200/60">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCameraOverrideCategory('inspection');
+                                  setIsCameraModalOpen(true);
+                                }}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+                              >
+                                <Camera className="w-3.5 h-3.5" />
+                                <span>Take Inspection Photo</span>
+                              </button>
+
                               <label className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs">
                                 <Upload className="w-3.5 h-3.5" />
-                                <span>Upload Inspection Photo Now</span>
+                                <span>Upload File</span>
                                 <input
                                   type="file"
                                   accept="image/*"
@@ -2046,7 +2039,25 @@ export default function JobEnquiriesView({
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-slate-200 bg-slate-100 flex justify-end flex-shrink-0">
+            <div className="p-4 border-t border-slate-200 bg-slate-100 flex justify-between items-center flex-shrink-0">
+              <div>
+                {selectedJob.status !== 'Closed' && (
+                  <button
+                    type="button"
+                    onClick={() => setModalTab('goAhead')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                      modalTab === 'goAhead'
+                        ? 'bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-400/50'
+                        : !hasGoAhead(selectedJob)
+                        ? 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold shadow-sm'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    {!hasGoAhead(selectedJob) ? 'Add to Go-Ahead' : 'Go-Ahead Order Info'}
+                  </button>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedJob(null)}
@@ -2158,6 +2169,17 @@ export default function JobEnquiriesView({
           </div>
         </div>
       )}
+
+      {/* Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        title="Take Job Photo"
+        categoryName={cameraOverrideCategory || uploadCategory}
+        onPhotosCaptured={(files) => {
+          processPhotoFiles(files, cameraOverrideCategory);
+        }}
+      />
     </div>
   );
 }

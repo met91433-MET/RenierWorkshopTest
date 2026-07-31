@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Job, UserProfile } from '../types';
+import { Job, Machine, UserProfile } from '../types';
 import { 
   Clipboard, 
   Search, 
@@ -21,23 +21,29 @@ import {
   Tag,
   Hash,
   ShieldCheck,
-  Calendar
+  Calendar,
+  Boxes
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import StoresDashboardView from './StoresDashboardView';
 
 interface DashboardViewProps {
   jobs: Job[];
+  machines?: Machine[];
   currentUser: UserProfile | null;
   onSelectJob: (job: Job, targetTab: string) => void;
+  onNavigateToStores?: () => void;
 }
 
 export default function DashboardView({ 
   jobs, 
+  machines = [],
   currentUser, 
   onSelectJob,
+  onNavigateToStores
 }: DashboardViewProps) {
-  // Mode Switcher: 'incoming' (View 1: Incoming Components) vs 'jobcards' (View 2: Jobs with Job Cards)
-  const [activeDashboardMode, setActiveDashboardMode] = useState<'incoming' | 'jobcards'>('incoming');
+  // Mode Switcher: 'incoming' (View 1: Incoming Components), 'jobcards' (View 2: Jobs with Job Cards), 'stores' (View 3: Stores Dashboard)
+  const [activeDashboardMode, setActiveDashboardMode] = useState<'incoming' | 'jobcards' | 'stores'>('incoming');
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -53,7 +59,7 @@ export default function DashboardView({
   }, [activeDashboardMode, searchTerm, statusFilter, itemsPerPage]);
 
   // Reset status filter dropdown when mode changes
-  const handleSwitchMode = (mode: 'incoming' | 'jobcards') => {
+  const handleSwitchMode = (mode: 'incoming' | 'jobcards' | 'stores') => {
     setActiveDashboardMode(mode);
     setStatusFilter('All');
     setSearchTerm('');
@@ -191,6 +197,19 @@ export default function DashboardView({
             }`}>
               {jobCardJobs.length}
             </span>
+          </button>
+
+          {/* View 3 Button: Stores Dashboard */}
+          <button
+            onClick={() => handleSwitchMode('stores')}
+            className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeDashboardMode === 'stores'
+                ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-700/20'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <Boxes className="w-4 h-4 text-blue-200" />
+            <span>Stores Dashboard</span>
           </button>
         </div>
       </div>
@@ -421,362 +440,373 @@ export default function DashboardView({
             </div>
           </div>
         </motion.div>
-      )}
-
-      {/* ==================== TABLE CONTAINER (WITH PAGINATION) ==================== */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {/* Table Filters Header */}
-        <div className="p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
-          <div>
-            <h2 className="text-base font-bold tracking-tight text-slate-800 flex items-center gap-2 font-display">
-              {activeDashboardMode === 'incoming' ? (
-                <>
-                  <Inbox className="w-4.5 h-4.5 text-amber-500" />
-                  Incoming Components List
-                </>
-              ) : (
-                <>
-                  <FileText className="w-4.5 h-4.5 text-emerald-600" />
-                  Official Job Cards List
-                </>
-              )}
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
-                {totalItems} {totalItems === 1 ? 'Job' : 'Jobs'}
-              </span>
-            </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              {activeDashboardMode === 'incoming' 
-                ? "Showing incoming items awaiting inspection, pre-quote, or job card creation."
-                : "Showing active job cards assigned to workshop floor technicians."}
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                type="text"
-                placeholder={activeDashboardMode === 'incoming' ? "Search serial, DN, customer, model..." : "Search JC #, serial, tech, customer..."}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-4 py-2 w-full sm:w-64 text-xs font-medium bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-amber-500"
-              />
-            </div>
-
-            {/* Status Filter Dropdown */}
-            <div className="flex items-center gap-2">
-              <Filter className="w-3.5 h-3.5 text-slate-400" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-amber-500"
-              >
+      )}      {/* ==================== TABLE CONTAINER (WITH PAGINATION) ==================== */}
+      {activeDashboardMode !== 'stores' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Table Filters Header */}
+          <div className="p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">
+            <div>
+              <h2 className="text-base font-bold tracking-tight text-slate-800 flex items-center gap-2 font-display">
                 {activeDashboardMode === 'incoming' ? (
                   <>
-                    <option value="All">All Incoming Stages</option>
-                    <option value="Received">1. Job Receiving</option>
-                    <option value="Inspected">2. QC / Inspection</option>
-                    <option value="PreQuoted">3. Pre-Quoted</option>
+                    <Inbox className="w-4.5 h-4.5 text-amber-500" />
+                    Incoming Components List
                   </>
                 ) : (
                   <>
-                    <option value="All">All Job Cards</option>
-                    <option value="Active">Active in Workshop</option>
-                    <option value="Closed">Closed / Completed</option>
+                    <FileText className="w-4.5 h-4.5 text-emerald-600" />
+                    Official Job Cards List
                   </>
                 )}
-              </select>
+                <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                  {totalItems} {totalItems === 1 ? 'Job' : 'Jobs'}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {activeDashboardMode === 'incoming' 
+                  ? "Showing incoming items awaiting inspection, pre-quote, or job card creation."
+                  : "Showing active job cards assigned to workshop floor technicians."}
+              </p>
             </div>
-          </div>
-        </div>
 
-        {/* Jobs List / Table */}
-        {filteredJobs.length === 0 ? (
-          <div className="p-12 text-center">
-            <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-sm font-semibold text-slate-700">No matching jobs found</h3>
-            <p className="text-xs text-slate-400 mt-1">
-              There are no jobs matching your search parameters or filter tab.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-slate-700 border-collapse">
-              <thead>
-                <tr className="bg-slate-50 text-slate-400 uppercase text-[10px] tracking-wider font-semibold border-b border-slate-200">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input 
+                  type="text"
+                  placeholder={activeDashboardMode === 'incoming' ? "Search serial, DN, customer, model..." : "Search JC #, serial, tech, customer..."}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 pr-4 py-2 w-full sm:w-64 text-xs font-medium bg-white border border-slate-200 rounded-xl focus:outline-hidden focus:border-amber-500"
+                />
+              </div>
+
+              {/* Status Filter Dropdown */}
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-amber-500"
+                >
                   {activeDashboardMode === 'incoming' ? (
                     <>
-                      <th className="p-4 pl-6">Job ID / Serial</th>
-                      <th className="p-4">Delivery Note / RFQ #</th>
-                      <th className="p-4">Customer</th>
-                      <th className="p-4">Component & Model</th>
-                      <th className="p-4">Incoming Stage</th>
-                      <th className="p-4">Date Recv</th>
-                      <th className="p-4 text-right pr-6">Action</th>
+                      <option value="All">All Incoming Stages</option>
+                      <option value="Received">1. Job Receiving</option>
+                      <option value="Inspected">2. QC / Inspection</option>
+                      <option value="PreQuoted">3. Pre-Quoted</option>
                     </>
                   ) : (
                     <>
-                      <th className="p-4 pl-6">Job Card # & Job ID</th>
-                      <th className="p-4">Customer & Order Ref</th>
-                      <th className="p-4">Component & Serial #</th>
-                      <th className="p-4">Quoted Value</th>
-                      <th className="p-4">Assigned Tech</th>
-                      <th className="p-4">Status</th>
-                      <th className="p-4 text-right pr-6">Action</th>
+                      <option value="All">All Job Cards</option>
+                      <option value="Active">Active in Workshop</option>
+                      <option value="Closed">Closed / Completed</option>
                     </>
                   )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-xs">
-                {paginatedJobs.map((job) => {
-                  if (activeDashboardMode === 'incoming') {
-                    // Render Incoming Components Row
-                    let statusBadge = '';
-                    let statusText = '';
-                    let nextActionTab = 'receiving';
-                    let actionLabel = 'Open Job';
-
-                    switch(job.status) {
-                      case 'Received':
-                        statusBadge = 'bg-blue-50 text-blue-700 border-blue-200';
-                        statusText = '1. Received';
-                        nextActionTab = 'inspection';
-                        actionLabel = 'Inspect Job';
-                        break;
-                      case 'Inspected':
-                        statusBadge = 'bg-amber-50 text-amber-700 border-amber-200';
-                        statusText = '2. Inspected';
-                        nextActionTab = 'quoting';
-                        actionLabel = 'Add Pre-Quote';
-                        break;
-                      case 'PreQuoted':
-                        statusBadge = 'bg-purple-50 text-purple-700 border-purple-200';
-                        statusText = '3. Pre-Quoted';
-                        nextActionTab = 'jobcard';
-                        actionLabel = 'Create Job Card';
-                        break;
-                      default:
-                        statusBadge = 'bg-slate-100 text-slate-700 border-slate-200';
-                        statusText = job.status;
-                        nextActionTab = 'receiving';
-                        actionLabel = 'View Job';
-                        break;
-                    }
-
-                    return (
-                      <tr key={job.id} className="hover:bg-amber-50/20 transition-colors">
-                        {/* Job ID / Serial */}
-                        <td className="p-4 pl-6">
-                          <div className="font-bold text-slate-800 text-sm font-display flex items-center gap-1.5">
-                            {job.id}
-                          </div>
-                          <div className="text-[11px] text-slate-400 font-mono mt-0.5">SN: {job.serialNumber || 'N/A'}</div>
-                        </td>
-
-                        {/* Delivery Note */}
-                        <td className="p-4 font-mono font-medium text-slate-700">
-                          {job.deliveryNoteNumber}
-                        </td>
-
-                        {/* Customer */}
-                        <td className="p-4 font-semibold text-slate-800">
-                          {job.customerName}
-                        </td>
-
-                        {/* Component & Model */}
-                        <td className="p-4">
-                          <span className="font-bold text-slate-800">{job.componentType}</span>
-                          <span className="text-slate-400 mx-1.5">•</span>
-                          <span className="text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 font-medium">
-                            {job.modelName}
-                          </span>
-                        </td>
-
-                        {/* Incoming Stage Badge */}
-                        <td className="p-4">
-                          <span className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] inline-block ${statusBadge}`}>
-                            {statusText}
-                          </span>
-                        </td>
-
-                        {/* Date Recv */}
-                        <td className="p-4 font-mono text-slate-500">
-                          {job.dateReceived}
-                        </td>
-
-                        {/* Action */}
-                        <td className="p-4 text-right pr-6">
-                          <button
-                            onClick={() => onSelectJob(job, nextActionTab)}
-                            className="inline-flex items-center gap-1.5 font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-3.5 py-1.5 rounded-xl border border-amber-200 transition-all cursor-pointer shadow-2xs"
-                          >
-                            <span>{actionLabel}</span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  } else {
-                    // Render Jobs with Job Cards Row
-                    const jcNumber = job.jobCardDetails?.jobCardNumber || `JC-${job.id}`;
-                    const orderNum = job.jobCardDetails?.orderNumber;
-                    const yourRef = job.jobCardDetails?.yourRef;
-                    const tech = job.jobCardDetails?.assignedTechnician || 'Unassigned';
-                    const cost = job.preQuoteDetails?.totalCost || 0;
-
-                    const isClosed = job.status === 'Closed';
-
-                    return (
-                      <tr key={job.id} className="hover:bg-emerald-50/20 transition-colors">
-                        {/* Job Card # & Job ID */}
-                        <td className="p-4 pl-6">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-black text-emerald-800 text-xs bg-emerald-100/80 px-2.5 py-0.5 rounded-md border border-emerald-200 font-mono">
-                              {jcNumber}
-                            </span>
-                            <span className="font-bold text-slate-500 text-xs">({job.id})</span>
-                          </div>
-                          <p className="text-[10px] text-slate-400 mt-1 font-mono">Created: {job.jobCardDetails?.jobCardCreatedAt?.slice(0, 10) || job.dateReceived}</p>
-                        </td>
-
-                        {/* Customer & Order Ref */}
-                        <td className="p-4">
-                          <div className="font-bold text-slate-800">{job.customerName}</div>
-                          <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                            {orderNum ? `PO #: ${orderNum}` : yourRef ? `Ref: ${yourRef}` : `DN: ${job.deliveryNoteNumber}`}
-                          </div>
-                        </td>
-
-                        {/* Component & Serial # */}
-                        <td className="p-4">
-                          <div className="font-semibold text-slate-800">{job.componentType} ({job.modelName})</div>
-                          <div className="text-[11px] text-slate-400 font-mono mt-0.5">SN: {job.serialNumber}</div>
-                        </td>
-
-                        {/* Quoted Cost */}
-                        <td className="p-4 font-bold font-mono text-slate-800 text-xs">
-                          {cost > 0 ? (
-                            <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                              {formatCurrency(cost)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-normal">Standard</span>
-                          )}
-                        </td>
-
-                        {/* Assigned Tech */}
-                        <td className="p-4">
-                          <span className={`px-2.5 py-1 rounded-md border text-[11px] font-semibold ${
-                            tech !== 'Unassigned' ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-slate-100 text-slate-500 border-slate-200'
-                          }`}>
-                            {tech}
-                          </span>
-                        </td>
-
-                        {/* Status */}
-                        <td className="p-4">
-                          {isClosed ? (
-                            <span className="px-2.5 py-1 rounded-lg border bg-slate-100 text-slate-700 border-slate-300 font-bold">
-                              Closed / Done
-                            </span>
-                          ) : (
-                            <span className="px-2.5 py-1 rounded-lg border bg-emerald-50 text-emerald-800 border-emerald-300 font-bold flex items-center gap-1.5 w-fit">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                              Card Active
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Action */}
-                        <td className="p-4 text-right pr-6">
-                          <button
-                            onClick={() => onSelectJob(job, 'jobcard')}
-                            className="inline-flex items-center gap-1.5 font-bold text-slate-800 hover:text-black bg-slate-100 hover:bg-slate-200 px-3.5 py-1.5 rounded-xl border border-slate-300 transition-all cursor-pointer shadow-2xs"
-                          >
-                            <span>Manage Card</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-slate-600" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  }
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* ==================== PAGINATION BAR ==================== */}
-        {filteredJobs.length > 0 && (
-          <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-            {/* Summary Text */}
-            <div className="text-xs text-slate-500 font-medium">
-              Showing <span className="font-bold text-slate-800">{startIndex + 1}</span> to{' '}
-              <span className="font-bold text-slate-800">{endIndex}</span> of{' '}
-              <span className="font-bold text-slate-800">{totalItems}</span> jobs
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="flex items-center gap-3">
-              {/* Items Per Page Selector */}
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-                <span>Per page:</span>
-                <select
-                  value={itemsPerPage}
-                  onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                  className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 focus:outline-hidden focus:border-amber-500 cursor-pointer"
-                >
-                  <option value={5}>5</option>
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
                 </select>
               </div>
-
-              {/* Page Buttons */}
-              <div className="flex items-center gap-1">
-                {/* Previous Button */}
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={validatedPage === 1}
-                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:hover:bg-white cursor-pointer transition-all shadow-2xs"
-                  title="Previous Page"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-
-                {/* Page Number Badges */}
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`min-w-[32px] h-8 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
-                      pageNum === validatedPage
-                        ? activeDashboardMode === 'incoming'
-                          ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
-                          : 'bg-slate-900 text-white border-slate-900 shadow-2xs'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    {pageNum}
-                  </button>
-                ))}
-
-                {/* Next Button */}
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={validatedPage === totalPages}
-                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:hover:bg-white cursor-pointer transition-all shadow-2xs"
-                  title="Next Page"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Jobs List / Table */}
+          {filteredJobs.length === 0 ? (
+            <div className="p-12 text-center">
+              <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+              <h3 className="text-sm font-semibold text-slate-700">No matching jobs found</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                There are no jobs matching your search parameters or filter tab.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-slate-700 border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 text-slate-400 uppercase text-[10px] tracking-wider font-semibold border-b border-slate-200">
+                    {activeDashboardMode === 'incoming' ? (
+                      <>
+                        <th className="p-4 pl-6">Job ID / Serial</th>
+                        <th className="p-4">Delivery Note / RFQ #</th>
+                        <th className="p-4">Customer</th>
+                        <th className="p-4">Component & Model</th>
+                        <th className="p-4">Incoming Stage</th>
+                        <th className="p-4">Date Recv</th>
+                        <th className="p-4 text-right pr-6">Action</th>
+                      </>
+                    ) : (
+                      <>
+                        <th className="p-4 pl-6">Job Card # & Job ID</th>
+                        <th className="p-4">Customer & Order Ref</th>
+                        <th className="p-4">Component & Serial #</th>
+                        <th className="p-4">Quoted Value</th>
+                        <th className="p-4">Assigned Tech</th>
+                        <th className="p-4">Status</th>
+                        <th className="p-4 text-right pr-6">Action</th>
+                      </>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 text-xs">
+                  {paginatedJobs.map((job) => {
+                    if (activeDashboardMode === 'incoming') {
+                      // Render Incoming Components Row
+                      let statusBadge = '';
+                      let statusText = '';
+                      let nextActionTab = 'receiving';
+                      let actionLabel = 'Open Job';
+
+                      switch(job.status) {
+                        case 'Received':
+                          statusBadge = 'bg-blue-50 text-blue-700 border-blue-200';
+                          statusText = '1. Received';
+                          nextActionTab = 'inspection';
+                          actionLabel = 'Inspect Job';
+                          break;
+                        case 'Inspected':
+                          statusBadge = 'bg-amber-50 text-amber-700 border-amber-200';
+                          statusText = '2. Inspected';
+                          nextActionTab = 'quoting';
+                          actionLabel = 'Add Pre-Quote';
+                          break;
+                        case 'PreQuoted':
+                          statusBadge = 'bg-purple-50 text-purple-700 border-purple-200';
+                          statusText = '3. Pre-Quoted';
+                          nextActionTab = 'jobcard';
+                          actionLabel = 'Create Job Card';
+                          break;
+                        default:
+                          statusBadge = 'bg-slate-100 text-slate-700 border-slate-200';
+                          statusText = job.status;
+                          nextActionTab = 'receiving';
+                          actionLabel = 'View Job';
+                          break;
+                      }
+
+                      return (
+                        <tr key={job.id} className="hover:bg-amber-50/20 transition-colors">
+                          {/* Job ID / Serial */}
+                          <td className="p-4 pl-6">
+                            <div className="font-bold text-slate-800 text-sm font-display flex items-center gap-1.5">
+                              {job.id}
+                            </div>
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">SN: {job.serialNumber || 'N/A'}</div>
+                          </td>
+
+                          {/* Delivery Note */}
+                          <td className="p-4 font-mono font-medium text-slate-700">
+                            {job.deliveryNoteNumber}
+                          </td>
+
+                          {/* Customer */}
+                          <td className="p-4 font-semibold text-slate-800">
+                            {job.customerName}
+                          </td>
+
+                          {/* Component & Model */}
+                          <td className="p-4">
+                            <span className="font-bold text-slate-800">{job.componentType}</span>
+                            <span className="text-slate-400 mx-1.5">•</span>
+                            <span className="text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 font-medium">
+                              {job.modelName}
+                            </span>
+                          </td>
+
+                          {/* Incoming Stage Badge */}
+                          <td className="p-4">
+                            <span className={`px-2.5 py-1 rounded-lg border font-bold text-[11px] inline-block ${statusBadge}`}>
+                              {statusText}
+                            </span>
+                          </td>
+
+                          {/* Date Recv */}
+                          <td className="p-4 font-mono text-slate-500">
+                            {job.dateReceived}
+                          </td>
+
+                          {/* Action */}
+                          <td className="p-4 text-right pr-6">
+                            <button
+                              onClick={() => onSelectJob(job, nextActionTab)}
+                              className="inline-flex items-center gap-1.5 font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-3.5 py-1.5 rounded-xl border border-amber-200 transition-all cursor-pointer shadow-2xs"
+                            >
+                              <span>{actionLabel}</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    } else {
+                      // Render Jobs with Job Cards Row
+                      const jcNumber = job.jobCardDetails?.jobCardNumber || `JC-${job.id}`;
+                      const orderNum = job.jobCardDetails?.orderNumber;
+                      const yourRef = job.jobCardDetails?.yourRef;
+                      const tech = job.jobCardDetails?.assignedTechnician || 'Unassigned';
+                      const cost = job.preQuoteDetails?.totalCost || 0;
+
+                      const isClosed = job.status === 'Closed';
+
+                      return (
+                        <tr key={job.id} className="hover:bg-emerald-50/20 transition-colors">
+                          {/* Job Card # & Job ID */}
+                          <td className="p-4 pl-6">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-black text-emerald-800 text-xs bg-emerald-100/80 px-2.5 py-0.5 rounded-md border border-emerald-200 font-mono">
+                                {jcNumber}
+                              </span>
+                              <span className="font-bold text-slate-500 text-xs">({job.id})</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1 font-mono">Created: {job.jobCardDetails?.jobCardCreatedAt?.slice(0, 10) || job.dateReceived}</p>
+                          </td>
+
+                          {/* Customer & Order Ref */}
+                          <td className="p-4">
+                            <div className="font-bold text-slate-800">{job.customerName}</div>
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                              {orderNum ? `PO #: ${orderNum}` : yourRef ? `Ref: ${yourRef}` : `DN: ${job.deliveryNoteNumber}`}
+                            </div>
+                          </td>
+
+                          {/* Component & Serial # */}
+                          <td className="p-4">
+                            <div className="font-semibold text-slate-800">{job.componentType} ({job.modelName})</div>
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">SN: {job.serialNumber}</div>
+                          </td>
+
+                          {/* Quoted Cost */}
+                          <td className="p-4 font-bold font-mono text-slate-800 text-xs">
+                            {cost > 0 ? (
+                              <span className="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                {formatCurrency(cost)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal">Standard</span>
+                            )}
+                          </td>
+
+                          {/* Assigned Tech */}
+                          <td className="p-4">
+                            <span className={`px-2.5 py-1 rounded-md border text-[11px] font-semibold ${
+                              tech !== 'Unassigned' ? 'bg-blue-50 text-blue-800 border-blue-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}>
+                              {tech}
+                            </span>
+                          </td>
+
+                          {/* Status */}
+                          <td className="p-4">
+                            {isClosed ? (
+                              <span className="px-2.5 py-1 rounded-lg border bg-slate-100 text-slate-700 border-slate-300 font-bold">
+                                Closed / Done
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-lg border bg-emerald-50 text-emerald-800 border-emerald-300 font-bold flex items-center gap-1.5 w-fit">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                Card Active
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Action */}
+                          <td className="p-4 text-right pr-6">
+                            <button
+                              onClick={() => onSelectJob(job, 'jobcard')}
+                              className="inline-flex items-center gap-1.5 font-bold text-slate-800 hover:text-black bg-slate-100 hover:bg-slate-200 px-3.5 py-1.5 rounded-xl border border-slate-300 transition-all cursor-pointer shadow-2xs"
+                            >
+                              <span>Manage Card</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-slate-600" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* ==================== PAGINATION BAR ==================== */}
+          {filteredJobs.length > 0 && (
+            <div className="p-4 bg-slate-50/80 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Summary Text */}
+              <div className="text-xs text-slate-500 font-medium">
+                Showing <span className="font-bold text-slate-800">{startIndex + 1}</span> to{' '}
+                <span className="font-bold text-slate-800">{endIndex}</span> of{' '}
+                <span className="font-bold text-slate-800">{totalItems}</span> jobs
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex items-center gap-3">
+                {/* Items Per Page Selector */}
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                  <span>Per page:</span>
+                  <select
+                    value={itemsPerPage}
+                    onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 focus:outline-hidden focus:border-amber-500 cursor-pointer"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+
+                {/* Page Buttons */}
+                <div className="flex items-center gap-1">
+                  {/* Previous Button */}
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={validatedPage === 1}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:hover:bg-white cursor-pointer transition-all shadow-2xs"
+                    title="Previous Page"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Page Number Badges */}
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`min-w-[32px] h-8 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                        pageNum === validatedPage
+                          ? activeDashboardMode === 'incoming'
+                            ? 'bg-amber-500 text-white border-amber-600 shadow-2xs'
+                            : 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+
+                  {/* Next Button */}
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={validatedPage === totalPages}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-40 disabled:hover:bg-white cursor-pointer transition-all shadow-2xs"
+                    title="Next Page"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ==================== VIEW 3: STORES DASHBOARD ==================== */}
+      {activeDashboardMode === 'stores' && (
+        <motion.div 
+          initial={{ opacity: 0, y: 6 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ duration: 0.2 }}
+        >
+          <StoresDashboardView currentUser={currentUser} jobs={jobs} machines={machines} />
+        </motion.div>
+      )}
     </div>
   );
 }

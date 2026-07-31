@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { 
   Customer, 
+  Machine,
+  Job,
   ComponentMatrix, 
   CustomColumn, 
   UserProfile, 
@@ -13,6 +15,8 @@ import {
   JobCardFormatLabels 
 } from '../types';
 import JobCardDocument from './JobCardDocument';
+import MachineCardDocument from './MachineCardDocument';
+import CameraCaptureModal from './CameraCaptureModal';
 import { 
   Shield, 
   UserPlus, 
@@ -46,12 +50,22 @@ import {
   Sliders,
   Square,
   Search,
+  Camera,
+  Cpu,
+  Wrench,
+  Layers,
+  MapPin,
+  Tag,
+  Edit,
+  ExternalLink,
   X
 } from 'lucide-react';
 
 interface AdminCenterViewProps {
   users: UserProfile[];
   customers: Customer[];
+  machines?: Machine[];
+  jobs?: Job[];
   componentsList: ComponentMatrix[];
   customColumns: CustomColumn[];
   jobCardFormat?: JobCardFormatConfig;
@@ -59,14 +73,20 @@ interface AdminCenterViewProps {
   onSaveCustomColumns: (columns: CustomColumn[]) => Promise<void>;
   onSaveCustomer: (customer: Customer) => Promise<void>;
   onDeleteCustomer: (id: string) => Promise<void>;
+  onSaveMachine?: (machine: Machine) => Promise<void>;
+  onDeleteMachine?: (id: string) => Promise<void>;
+  onDeleteAllMachines?: () => Promise<void>;
   onSaveComponentMatrix: (matrix: ComponentMatrix) => Promise<void>;
   onDeleteComponentMatrix: (id: string) => Promise<void>;
   onSaveJobCardFormat?: (config: JobCardFormatConfig) => Promise<void>;
+  onSelectJob?: (job: Job) => void;
 }
 
 export default function AdminCenterView({
   users,
   customers,
+  machines = [],
+  jobs = [],
   componentsList,
   customColumns,
   jobCardFormat,
@@ -74,11 +94,15 @@ export default function AdminCenterView({
   onSaveCustomColumns,
   onSaveCustomer,
   onDeleteCustomer,
+  onSaveMachine,
+  onDeleteMachine,
+  onDeleteAllMachines,
   onSaveComponentMatrix,
   onDeleteComponentMatrix,
-  onSaveJobCardFormat
+  onSaveJobCardFormat,
+  onSelectJob
 }: AdminCenterViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'columns' | 'customers' | 'pricing' | 'jobCard'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'columns' | 'customers' | 'pricing' | 'machines' | 'jobCard'>('users');
 
   // ========================================================
   // 1. STATE FOR USER ROLES & PERMISSIONS
@@ -270,6 +294,246 @@ export default function AdminCenterView({
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [custSearchQuery, setCustSearchQuery] = useState('');
   const [columnSearchQuery, setColumnSearchQuery] = useState('');
+
+  // ========================================================
+  // 3B. STATE & HANDLERS FOR MACHINES INVENTORY & EXCEL
+  // ========================================================
+  const [machinesSearchQuery, setMachinesSearchQuery] = useState('');
+  const [machinesStatusFilter, setMachinesStatusFilter] = useState<string>('all');
+  const [selectedMachineForCard, setSelectedMachineForCard] = useState<Machine | null>(null);
+  const [isAddMachineModalOpen, setIsAddMachineModalOpen] = useState(false);
+  const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
+  const [isUploadingMachinesExcel, setIsUploadingMachinesExcel] = useState(false);
+  const [machineToDelete, setMachineToDelete] = useState<Machine | null>(null);
+  const [showConfirmDeleteAllModal, setShowConfirmDeleteAllModal] = useState(false);
+
+  // Form state for adding / editing a machine
+  const [machineForm, setMachineForm] = useState({
+    machineName: '',
+    serialNumber: '',
+    make: '',
+    machineType: '',
+    model: '',
+    location: '',
+    status: 'Operational'
+  });
+
+  const openAddMachineModal = (machineToEdit?: Machine) => {
+    if (machineToEdit) {
+      setEditingMachine(machineToEdit);
+      setMachineForm({
+        machineName: machineToEdit.machineName || '',
+        serialNumber: machineToEdit.serialNumber || '',
+        make: machineToEdit.make || '',
+        machineType: machineToEdit.machineType || '',
+        model: machineToEdit.model || '',
+        location: machineToEdit.location || '',
+        status: machineToEdit.status || 'Operational'
+      });
+    } else {
+      setEditingMachine(null);
+      setMachineForm({
+        machineName: '',
+        serialNumber: '',
+        make: '',
+        machineType: '',
+        model: '',
+        location: '',
+        status: 'Operational'
+      });
+    }
+    setIsAddMachineModalOpen(true);
+  };
+
+  const handleSaveMachineSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!machineForm.machineName.trim() || !machineForm.serialNumber.trim()) {
+      alert("Machine Equipment Name and Machine Number are required.");
+      return;
+    }
+
+    const mId = editingMachine ? editingMachine.id : `mach-${Date.now()}`;
+    const newMachineObj: Machine = {
+      id: mId,
+      machineName: machineForm.machineName.trim(),
+      serialNumber: machineForm.serialNumber.trim(),
+      make: machineForm.make.trim() || undefined,
+      machineType: machineForm.machineType.trim() || undefined,
+      model: machineForm.model.trim() || undefined,
+      location: machineForm.location.trim() || undefined,
+      status: machineForm.status || 'Operational',
+      files: editingMachine?.files || [],
+      linkedJobIds: editingMachine?.linkedJobIds || [],
+      createdAt: editingMachine?.createdAt || new Date().toISOString()
+    };
+
+    if (onSaveMachine) {
+      await onSaveMachine(newMachineObj);
+    }
+    setIsAddMachineModalOpen(false);
+    setEditingMachine(null);
+    alert(`Machine '${newMachineObj.machineName}' successfully saved.`);
+  };
+
+  const handleMachineExcelUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!onSaveMachine) {
+      alert("Machine saving is not initialized.");
+      return;
+    }
+
+    setIsUploadingMachinesExcel(true);
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const buffer = evt.target?.result as ArrayBuffer;
+        const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+        
+        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+          alert("No sheets found in the Excel workbook.");
+          setIsUploadingMachinesExcel(false);
+          return;
+        }
+
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rawJson: Record<string, any>[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+        if (!rawJson || rawJson.length === 0) {
+          alert("The uploaded Excel sheet contains no data.");
+          setIsUploadingMachinesExcel(false);
+          return;
+        }
+
+        let importedCount = 0;
+        for (let i = 0; i < rawJson.length; i++) {
+          const row = rawJson[i];
+          if (!row || Object.keys(row).length === 0) continue;
+
+          const keys = Object.keys(row);
+          let machineName = '';
+          let serialNumber = '';
+          let make = '';
+          let machineType = '';
+          let model = '';
+          let location = '';
+          let status = 'Operational';
+
+          keys.forEach(k => {
+            const cleanKey = k.trim();
+            const lowerKey = cleanKey.toLowerCase();
+            const val = String(row[k]).trim();
+
+            if (!val) return;
+
+            if (lowerKey.includes('machine number') || lowerKey.includes('machine no') || lowerKey.includes('serial') || lowerKey === 'sn' || lowerKey === 's/n' || lowerKey === 'mch no') {
+              serialNumber = val;
+            } else if (lowerKey.includes('machine name') || lowerKey.includes('equipment') || lowerKey === 'machine' || lowerKey === 'name') {
+              machineName = val;
+            } else if (lowerKey.includes('machine type') || lowerKey === 'type') {
+              machineType = val;
+            } else if (lowerKey.includes('model')) {
+              model = val;
+            } else if (lowerKey.includes('make') || lowerKey.includes('manufacturer') || lowerKey.includes('brand')) {
+              make = val;
+            } else if (lowerKey.includes('area') || lowerKey.includes('code') || lowerKey.includes('location') || lowerKey.includes('plant') || lowerKey.includes('bay') || lowerKey.includes('site')) {
+              location = val;
+            } else if (lowerKey.includes('status') || lowerKey.includes('state') || lowerKey.includes('condition')) {
+              status = val;
+            }
+          });
+
+          if (!machineName && !serialNumber) {
+            const firstVal = Object.values(row).find(v => v && String(v).trim().length > 0);
+            if (!firstVal) continue;
+            machineName = String(firstVal);
+            serialNumber = `MCH-${Math.floor(100000 + Math.random() * 900000)}`;
+          } else if (!machineName) {
+            machineName = `Machine (${serialNumber})`;
+          } else if (!serialNumber) {
+            serialNumber = `MCH-${Math.floor(100000 + Math.random() * 900000)}`;
+          }
+
+          const newMachine: Machine = {
+            id: `mach-${serialNumber.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}-${Date.now()}-${i}`,
+            machineName,
+            serialNumber,
+            make,
+            machineType,
+            model,
+            location,
+            status: status || 'Operational',
+            createdAt: new Date().toISOString()
+          };
+
+          await onSaveMachine(newMachine);
+          importedCount++;
+        }
+
+        alert(`Successfully imported ${importedCount} machine(s) from Excel!`);
+      } catch (err) {
+        console.error("Error reading Excel file for machines:", err);
+        alert("Failed to parse Excel file. Ensure it is a valid .xlsx or .xls file.");
+      } finally {
+        setIsUploadingMachinesExcel(false);
+        if (e.target) e.target.value = '';
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleDownloadMachinesTemplate = () => {
+    const templateData = [
+      {
+        'Machine Name': '5-Axis CNC Milling Center',
+        'Machine Number': 'MCH-2025-9901',
+        'Make': 'Haas Automation',
+        'Machine Type': 'CNC Milling Center',
+        'Model': 'VF-4SS',
+        'Area Code': '4B',
+        'Status': 'Operational'
+      },
+      {
+        'Machine Name': 'CAT 777D Heavy Haul Truck Spindle Rig',
+        'Machine Number': '777D-SP-4402',
+        'Make': 'Caterpillar',
+        'Machine Type': 'Heavy Rig',
+        'Model': '777D Series',
+        'Area Code': '3A',
+        'Status': 'Under Repair'
+      }
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Machines Template");
+    XLSX.writeFile(workbook, "Machines_Upload_Template.xlsx");
+  };
+
+  const handleExportMachinesExcel = () => {
+    if (!machines || machines.length === 0) {
+      alert("No machines available to export.");
+      return;
+    }
+
+    const exportRows = machines.map(m => ({
+      'Machine Equipment Name': m.machineName,
+      'Machine Number': m.serialNumber,
+      'Make / Manufacturer': m.make || '',
+      'Machine Type': m.machineType || '',
+      'Model / Series': m.model || '',
+      'Area Code': m.location || '',
+      'Operating Status': m.status || 'Operational'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Machines Inventory");
+    XLSX.writeFile(workbook, `Machines_Inventory_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
 
   // ========================================================
   // 4. STATE FOR COMPONENT PRICING MATRICES (VERY CRITICAL!)
@@ -606,14 +870,15 @@ export default function AdminCenterView({
   const [formatSuccessMsg, setFormatSuccessMsg] = useState(false);
   const [previewPage, setPreviewPage] = useState<'page1' | 'page2'>('page1');
 
+  const [isLogoCameraOpen, setIsLogoCameraOpen] = useState(false);
+
   useEffect(() => {
     if (jobCardFormat) {
       setFormatConfig(jobCardFormat);
     }
   }, [jobCardFormat]);
 
-  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const processLogoFile = (file: File) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
@@ -622,6 +887,14 @@ export default function AdminCenterView({
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processLogoFile(file);
+    }
+    e.target.value = '';
   };
 
   const handleRemoveLogo = () => {
@@ -727,6 +1000,17 @@ export default function AdminCenterView({
         >
           <DollarSign className="w-4 h-4" />
           Component Pricing Matrices (Excel Style)
+        </button>
+        <button
+          onClick={() => setActiveSubTab('machines')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
+            activeSubTab === 'machines'
+              ? 'border-blue-600 text-blue-600 bg-blue-50/20'
+              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+          }`}
+        >
+          <Cpu className="w-4 h-4" />
+          Machines Equipment Directory
         </button>
         <button
           onClick={() => setActiveSubTab('customers')}
@@ -1193,6 +1477,227 @@ export default function AdminCenterView({
       )}
 
       {/* ========================================================
+          TAB 3B: MACHINES INVENTORY & EXCEL UPLOAD
+          ======================================================== */}
+      {activeSubTab === 'machines' && (
+        <div className="space-y-6 text-left">
+          {/* Machines Top Banner & Actions Bar */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-blue-600" />
+                  Plant Machinery &amp; Equipment Directory
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Manage plant machinery and equipment details. Each machine can be viewed as a standalone Job Card spec sheet with linked repair histories.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Export to Excel */}
+                <button
+                  type="button"
+                  onClick={handleExportMachinesExcel}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                  <span>Export ({machines.length})</span>
+                </button>
+
+                {/* Add Machine Manually */}
+                <button
+                  type="button"
+                  onClick={() => openAddMachineModal()}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add Machine</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Search & Filter Bar */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 border-t border-slate-100">
+              <div className="relative flex-1 w-full">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search machines by name, serial number, make, model, location..."
+                  value={machinesSearchQuery}
+                  onChange={(e) => setMachinesSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
+                />
+                {machinesSearchQuery && (
+                  <button
+                    onClick={() => setMachinesSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                <span className="text-xs font-semibold text-slate-500 hidden md:inline">Status:</span>
+                <select
+                  value={machinesStatusFilter}
+                  onChange={(e) => setMachinesStatusFilter(e.target.value)}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-hidden cursor-pointer"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="Operational">Operational</option>
+                  <option value="Under Repair">Under Repair</option>
+                  <option value="In Maintenance">In Maintenance</option>
+                  <option value="Decommissioned">Decommissioned</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Machines Table / Directory List */}
+          {(() => {
+            const filteredMachines = machines.filter(m => {
+              const q = machinesSearchQuery.toLowerCase().trim();
+              const matchesSearch = !q || 
+                m.machineName.toLowerCase().includes(q) ||
+                m.serialNumber.toLowerCase().includes(q) ||
+                (m.make && m.make.toLowerCase().includes(q)) ||
+                (m.machineType && m.machineType.toLowerCase().includes(q)) ||
+                (m.model && m.model.toLowerCase().includes(q)) ||
+                (m.location && m.location.toLowerCase().includes(q));
+
+              const matchesStatus = machinesStatusFilter === 'all' || m.status === machinesStatusFilter;
+              return matchesSearch && matchesStatus;
+            });
+
+            return (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-700">Machines Registered ({filteredMachines.length})</span>
+                  </div>
+                  <span className="text-[11px] font-medium text-slate-400">Click "View Card" on any row to open its specification document</span>
+                </div>
+
+                {filteredMachines.length > 0 ? (
+                  <div className="max-h-[580px] overflow-auto relative border-t border-slate-200">
+                    <table className="w-full text-xs text-left">
+                      <thead className="sticky top-0 z-20 bg-slate-100 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 shadow-2xs">
+                        <tr>
+                          <th className="p-3.5 bg-slate-100">Machine Number</th>
+                          <th className="p-3.5 bg-slate-100">Machine Name + Model</th>
+                          <th className="p-3.5 bg-slate-100">Machine Type</th>
+                          <th className="p-3.5 bg-slate-100">Area Code</th>
+                          <th className="p-3.5 bg-slate-100">Status State (Slider)</th>
+                          <th className="p-3.5 text-right bg-slate-100">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
+                        {filteredMachines.map((m) => {
+                          const nameAndModel = [m.make, m.model].filter(Boolean).join(' ') || m.machineName || 'N/A';
+                          return (
+                            <tr key={m.id} className="hover:bg-blue-50/30 transition-colors">
+                              <td className="p-3.5 font-mono font-extrabold text-blue-700">
+                                {m.serialNumber}
+                              </td>
+                              <td className="p-3.5">
+                                <p className="font-extrabold text-slate-900">{nameAndModel}</p>
+                              </td>
+                              <td className="p-3.5 text-slate-700 font-semibold">
+                                {m.machineType || 'N/A'}
+                              </td>
+                              <td className="p-3.5 text-slate-600 font-mono font-bold">
+                                <span className="bg-slate-100 border border-slate-200 text-slate-800 px-2 py-1 rounded-md text-[11px] inline-flex items-center gap-1">
+                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                  {m.location || 'N/A'}
+                                </span>
+                              </td>
+                            <td className="p-3.5">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const nextStatus = m.status === 'Operational' ? 'Under Repair' : 'Operational';
+                                    if (onSaveMachine) {
+                                      await onSaveMachine({ ...m, status: nextStatus });
+                                    }
+                                  }}
+                                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                                    m.status === 'Operational' ? 'bg-emerald-500' : 'bg-amber-500'
+                                  }`}
+                                  title={`Toggle machine status (Currently ${m.status || 'Operational'})`}
+                                >
+                                  <span
+                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                      m.status === 'Operational' ? 'translate-x-5' : 'translate-x-0'
+                                    }`}
+                                  />
+                                </button>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tight border ${
+                                  m.status === 'Operational' 
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}>
+                                  {m.status || 'Operational'}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedMachineForCard(m)}
+                                  className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-800 rounded-lg border border-blue-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
+                                  title="View Machine Specification Card"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openAddMachineModal(m)}
+                                  className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer border border-slate-200"
+                                  title="Edit Machine Details"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                {onDeleteMachine && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMachineToDelete(m);
+                                    }}
+                                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border border-red-200"
+                                    title="Delete Machine Record"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-12 text-center text-slate-400 space-y-2">
+                    <Cpu className="w-10 h-10 mx-auto text-slate-300" />
+                    <p className="font-semibold text-slate-700 text-sm">No machines found</p>
+                    <p className="text-xs">Upload an Excel sheet or click "Add Machine" to register your plant equipment.</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ========================================================
           TAB 4: CUSTOMERS DIRECTORY
           ======================================================== */}
       {activeSubTab === 'customers' && (
@@ -1455,7 +1960,7 @@ export default function AdminCenterView({
                         </div>
                       )}
                       <div className="flex items-center gap-2">
-                        <label className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5">
+                        <label className="px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5">
                           <Upload className="w-3.5 h-3.5" />
                           Upload Logo
                           <input type="file" accept="image/*" onChange={handleLogoFileUpload} className="hidden" />
@@ -1870,6 +2375,246 @@ export default function AdminCenterView({
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isLogoCameraOpen}
+        onClose={() => setIsLogoCameraOpen(false)}
+        title="Capture Company Logo"
+        categoryName="Company Branding"
+        onPhotosCaptured={(files) => {
+          if (files[0]) {
+            processLogoFile(files[0]);
+          }
+        }}
+      />
+
+      {/* Selected Machine Specification Card View */}
+      {selectedMachineForCard && (
+        <MachineCardDocument
+          machine={selectedMachineForCard}
+          format={jobCardFormat}
+          jobs={jobs}
+          onClose={() => setSelectedMachineForCard(null)}
+          onEdit={(m) => {
+            setSelectedMachineForCard(null);
+            openAddMachineModal(m);
+          }}
+          onDelete={async (id) => {
+            if (onDeleteMachine) await onDeleteMachine(id);
+            setSelectedMachineForCard(null);
+          }}
+          onSelectJob={onSelectJob}
+          onSaveMachine={async (updatedMachine) => {
+            setSelectedMachineForCard(updatedMachine);
+            if (onSaveMachine) {
+              await onSaveMachine(updatedMachine);
+            }
+          }}
+        />
+      )}
+
+      {/* Add / Edit Machine Modal */}
+      {isAddMachineModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white px-6 py-4 flex justify-between items-center">
+              <h3 className="font-extrabold text-sm flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-blue-400" />
+                {editingMachine ? 'Edit Machine Record' : 'Register New Machine'}
+              </h3>
+              <button
+                onClick={() => setIsAddMachineModalOpen(false)}
+                className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMachineSubmit} className="p-6 space-y-4 text-left text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Machine Equipment Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. 5-Axis CNC Milling Center"
+                    value={machineForm.machineName}
+                    onChange={(e) => setMachineForm(f => ({ ...f, machineName: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Machine Number *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. MCH-2025-9901"
+                    value={machineForm.serialNumber}
+                    onChange={(e) => setMachineForm(f => ({ ...f, serialNumber: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-blue-700 focus:outline-hidden font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Make / Manufacturer</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Haas, Caterpillar"
+                    value={machineForm.make}
+                    onChange={(e) => setMachineForm(f => ({ ...f, make: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Machine Type</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. CNC Milling, Spindle Assembly"
+                    value={machineForm.machineType}
+                    onChange={(e) => setMachineForm(f => ({ ...f, machineType: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Model Name / Series</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. VF-4SS, 777D"
+                    value={machineForm.model}
+                    onChange={(e) => setMachineForm(f => ({ ...f, model: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Area Code</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 4B, 3A, Shop Floor"
+                    value={machineForm.location}
+                    onChange={(e) => setMachineForm(f => ({ ...f, location: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium focus:outline-hidden"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Operating Status</label>
+                <select
+                  value={machineForm.status}
+                  onChange={(e) => setMachineForm(f => ({ ...f, status: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-slate-800 focus:outline-hidden cursor-pointer"
+                >
+                  <option value="Operational">Operational</option>
+                  <option value="Under Repair">Under Repair</option>
+                  <option value="In Maintenance">In Maintenance</option>
+                  <option value="Decommissioned">Decommissioned</option>
+                </select>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddMachineModalOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Save Machine Record
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirm Delete Machine Modal */}
+      {machineToDelete && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-md w-full space-y-4 animate-in fade-in zoom-in-95 text-left">
+            <div className="flex items-center gap-3 text-red-600">
+              <Trash2 className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-extrabold text-slate-900">Delete Machine Record</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete <strong className="text-slate-900">{machineToDelete.machineName}</strong> (SN: {machineToDelete.serialNumber})? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setMachineToDelete(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const targetId = machineToDelete.id;
+                  setMachineToDelete(null);
+                  if (selectedMachineForCard?.id === targetId) {
+                    setSelectedMachineForCard(null);
+                  }
+                  if (onDeleteMachine) {
+                    await onDeleteMachine(targetId);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Delete Machine
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Custom Confirm Delete All Machines Modal */}
+      {showConfirmDeleteAllModal && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-red-200 p-6 max-w-md w-full space-y-4 animate-in fade-in zoom-in-95 text-left">
+            <div className="flex items-center gap-3 text-red-600">
+              <Trash2 className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-extrabold text-slate-900">Delete All Machines ({machines.length})</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete <strong>ALL {machines.length} machine equipment records</strong>? This will clear the entire machine registry and cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowConfirmDeleteAllModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowConfirmDeleteAllModal(false);
+                  setSelectedMachineForCard(null);
+                  if (onDeleteAllMachines) {
+                    await onDeleteAllMachines();
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Delete All Machines
+              </button>
             </div>
           </div>
         </div>

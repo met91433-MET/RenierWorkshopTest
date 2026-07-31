@@ -5,6 +5,7 @@ import {
   UserProfile, 
   Job, 
   Customer, 
+  Machine,
   ComponentMatrix, 
   CustomColumn, 
   UserPermissions,
@@ -14,6 +15,7 @@ import {
 import { 
   getJobs, 
   getCustomers, 
+  getMachines,
   getComponentMatrices, 
   getCustomColumns, 
   getAllUsers, 
@@ -21,6 +23,9 @@ import {
   seedDatabaseIfEmpty,
   saveJob,
   saveCustomer,
+  saveMachine,
+  deleteMachine,
+  deleteAllMachines,
   saveCustomColumns,
   saveComponentMatrix,
   updateUserPermissions,
@@ -40,6 +45,7 @@ import JobCardView from './components/JobCardView';
 import JobEnquiriesView from './components/JobEnquiriesView';
 import AllJobsView from './components/AllJobsView';
 import AdminCenterView from './components/AdminCenterView';
+import StoresDashboardView from './components/StoresDashboardView';
 
 import { 
   Wrench, 
@@ -69,6 +75,7 @@ export default function App() {
   // Core ERP State
   const [jobs, setJobs] = useState<Job[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
   const [componentsList, setComponentsList] = useState<ComponentMatrix[]>([]);
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
@@ -151,12 +158,14 @@ export default function App() {
     try {
       const fetchedJobs = await getJobs();
       const fetchedCustomers = await getCustomers();
+      const fetchedMachines = await getMachines();
       const fetchedComponents = await getComponentMatrices();
       const fetchedCustomCols = await getCustomColumns();
       const fetchedFormat = await getJobCardFormatConfig();
 
       setJobs(fetchedJobs);
       setCustomers(fetchedCustomers);
+      setMachines(fetchedMachines);
       setComponentsList(fetchedComponents);
       setCustomColumns(fetchedCustomCols);
       setJobCardFormat(fetchedFormat);
@@ -207,6 +216,39 @@ export default function App() {
     await loadAllERPData();
   };
 
+  const handleSaveMachine = async (mach: Machine) => {
+    setMachines(prev => {
+      const exists = prev.some(m => m.id === mach.id);
+      if (exists) {
+        return prev.map(m => m.id === mach.id ? mach : m);
+      }
+      return [mach, ...prev];
+    });
+    try {
+      await saveMachine(mach);
+    } catch (err) {
+      console.error("Error saving machine:", err);
+    }
+  };
+
+  const handleDeleteMachine = async (id: string) => {
+    setMachines(prev => prev.filter(m => m.id !== id));
+    try {
+      await deleteMachine(id);
+    } catch (err) {
+      console.error("Error deleting machine:", err);
+    }
+  };
+
+  const handleDeleteAllMachines = async () => {
+    setMachines([]);
+    try {
+      await deleteAllMachines();
+    } catch (err) {
+      console.error("Error deleting all machines:", err);
+    }
+  };
+
   const handleSaveCustomColumns = async (cols: CustomColumn[]) => {
     await saveCustomColumns(cols);
     await loadAllERPData();
@@ -245,7 +287,8 @@ export default function App() {
     if (p.isAdmin) return true; // Admins have full override permission!
 
     switch(tabName) {
-      case 'dashboard': return true;
+      case 'dashboard':
+      case 'stores': return true;
       case 'receiving': return p.canReceive;
       case 'inspection': return p.canInspect;
       case 'quoting': return p.canQuote;
@@ -452,8 +495,18 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <DashboardView 
                 jobs={jobs} 
+                machines={machines}
                 currentUser={userProfile} 
                 onSelectJob={handleSelectJobFromDashboard}
+                onNavigateToStores={() => setActiveTab('stores')}
+              />
+            )}
+
+            {activeTab === 'stores' && (
+              <StoresDashboardView
+                currentUser={userProfile}
+                jobs={jobs}
+                machines={machines}
               />
             )}
 
@@ -508,6 +561,8 @@ export default function App() {
               <AdminCenterView 
                 users={usersList}
                 customers={customers}
+                machines={machines}
+                jobs={jobs}
                 componentsList={componentsList}
                 customColumns={customColumns}
                 jobCardFormat={jobCardFormat}
@@ -515,9 +570,16 @@ export default function App() {
                 onSaveCustomColumns={handleSaveCustomColumns}
                 onSaveCustomer={handleSaveCustomer}
                 onDeleteCustomer={handleDeleteCustomer}
+                onSaveMachine={handleSaveMachine}
+                onDeleteMachine={handleDeleteMachine}
+                onDeleteAllMachines={handleDeleteAllMachines}
                 onSaveComponentMatrix={handleSaveComponentMatrix}
                 onDeleteComponentMatrix={handleDeleteComponentMatrix}
                 onSaveJobCardFormat={handleSaveJobCardFormat}
+                onSelectJob={(job) => {
+                  setSelectedJobContext(job);
+                  setActiveTab('jobcard');
+                }}
               />
             )}
           </div>

@@ -25,6 +25,85 @@ export interface Customer {
   createdAt: string;
 }
 
+export interface MachineServiceLog {
+  id: string;
+  date: string; // YYYY-MM-DD format
+  orderNumber: string; // Repair / Order number
+  issue: string; // Issue or repair details
+  loggedAt?: string;
+  loggedBy?: string;
+}
+
+export interface MachineTimesheetBook {
+  id: string;
+  bookNumber: string; // e.g. "301-360"
+  startPage: number; // e.g. 301
+  endPage: number; // e.g. 360
+  dateAppointed: string; // YYYY-MM-DD
+  status?: 'Active' | 'Completed' | 'Archived' | string;
+  notes?: string;
+  loggedAt?: string;
+}
+
+export interface Machine {
+  id: string;
+  machineName: string;
+  serialNumber: string; // Machine Number / Identifying Field
+  make?: string;
+  machineType?: string;
+  model?: string;
+  location?: string;
+  customerName?: string;
+  category?: string;
+  specs?: Record<string, string>;
+  notes?: string;
+  status?: 'Operational' | 'Active' | 'In Maintenance' | 'Under Repair' | 'Decommissioned' | string;
+  files?: JobFile[];
+  linkedJobIds?: string[];
+  serviceLogs?: MachineServiceLog[];
+  timesheetBooks?: MachineTimesheetBook[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// Stores Dashboard Types
+export interface ToolStockItem {
+  id: string;
+  description: string;
+  typeSize: string;
+  quantity: number;
+  addedDate: string; // YYYY-MM-DD
+  employeeNumber: string; // "Stores" when in stock, clock number when signed out
+  signOutDate: string; // YYYY-MM-DD or empty
+  dateReturn: string; // YYYY-MM-DD or empty
+  status: 'In Stock' | 'Signed Out';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ConsumableItem {
+  id: string;
+  description: string;
+  typeSize: string;
+  quantity: number;
+  addedDate: string; // YYYY-MM-DD
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ConsumableAllocationLog {
+  id: string;
+  consumableId: string;
+  consumableDescription: string;
+  consumableTypeSize: string;
+  clockNumber: string;
+  jobNumber: string;
+  machineNumber?: string;
+  quantityAllocated: number;
+  allocatedAt: string; // ISO or formatted date string
+  loggedBy?: string;
+}
+
 export interface ComponentStep {
   stepName: string;
   prices: { [modelName: string]: number };

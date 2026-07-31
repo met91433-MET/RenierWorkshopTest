@@ -38,7 +38,27 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
+    match /machines/{machineId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
     match /config/{configId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /tool_stock/{toolId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /consumables/{consumableId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /consumable_allocations/{allocationId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }

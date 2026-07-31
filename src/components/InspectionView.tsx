@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Job, JobFile, deduplicateJobFiles } from '../types';
 import { compressFile } from '../utils/imageCompressor';
+import CameraCaptureModal from './CameraCaptureModal';
 import { 
   ClipboardCheck, 
   Search, 
@@ -67,6 +68,8 @@ export default function InspectionView({
   const [targetCategory, setTargetCategory] = useState<'inspection' | 'delivery' | 'job'>('inspection');
   const [photoFilterTab, setPhotoFilterTab] = useState<'all' | 'inspection' | 'delivery' | 'job'>('all');
   const [isUploading, setIsUploading] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraCategory, setCameraCategory] = useState<'inspection' | 'delivery' | 'job' | undefined>(undefined);
 
   // Inspection Form State
   const [inspectorName, setInspectorName] = useState(currentUser?.displayName || currentUser?.email || '');
@@ -99,21 +102,19 @@ export default function InspectionView({
   };
 
   // Upload targeted photos directly to selected folder for a job
-  const handleTargetedPhotoUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>, 
+  const processTargetedPhotoFiles = async (
+    fileList: File[],
     categoryToUse?: 'inspection' | 'delivery' | 'job',
     jobToUse?: Job
   ) => {
     const activeJob = jobToUse || selectedJob;
-    const files = e.target.files;
-    if (!files || files.length === 0 || !activeJob) return;
+    if (!fileList || fileList.length === 0 || !activeJob) return;
 
     const category = categoryToUse || targetCategory;
     setIsUploading(true);
 
     try {
       const newJobFiles: JobFile[] = [];
-      const fileList: File[] = Array.from(files);
 
       for (const file of fileList) {
         const { dataUrl, size } = await compressFile(file, 1024, 0.65);
@@ -156,8 +157,18 @@ export default function InspectionView({
       alert("Failed to upload photos.");
     } finally {
       setIsUploading(false);
-      e.target.value = '';
     }
+  };
+
+  const handleTargetedPhotoUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>, 
+    categoryToUse?: 'inspection' | 'delivery' | 'job',
+    jobToUse?: Job
+  ) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await processTargetedPhotoFiles(Array.from(files), categoryToUse, jobToUse);
+    e.target.value = '';
   };
 
   // Change category tag of an existing photo
@@ -714,27 +725,46 @@ export default function InspectionView({
                   </div>
 
                   {/* Dropzone / Upload Button */}
-                  <label className="border-2 border-dashed border-amber-300 hover:border-amber-500 bg-white rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 group hover:shadow-xs">
-                    <div className="p-3 bg-amber-50 text-amber-600 rounded-full group-hover:scale-110 transition-transform">
+                  <div className="border-2 border-dashed border-amber-300 bg-white rounded-2xl p-6 text-center flex flex-col items-center justify-center gap-3">
+                    <div className="p-3 bg-amber-50 text-amber-600 rounded-full">
                       <Upload className="w-6 h-6" />
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-800">
-                        {isUploading ? "Processing & Compressing Photos..." : `Click or Drag Photos to Upload to ${targetCategory.toUpperCase()}`}
+                        {isUploading ? "Processing & Compressing Photos..." : `Upload Photos to ${targetCategory.toUpperCase()} Folder`}
                       </p>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        Supports JPEG, PNG, WEBP. Photos are automatically compressed to ensure instant saving.
+                        Take photos directly with camera or select image files.
                       </p>
                     </div>
-                    <input
-                      type="file"
-                      multiple
-                      accept="image/*"
-                      disabled={isUploading}
-                      onChange={(e) => handleTargetedPhotoUpload(e)}
-                      className="hidden"
-                    />
-                  </label>
+
+                    <div className="flex items-center justify-center gap-2 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCameraCategory(targetCategory);
+                          setIsCameraOpen(true);
+                        }}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs flex items-center gap-1.5"
+                      >
+                        <Camera className="w-4 h-4" />
+                        Take Photo
+                      </button>
+
+                      <label className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl cursor-pointer transition-all shadow-xs flex items-center gap-1.5">
+                        <Upload className="w-4 h-4" />
+                        Browse Files
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          disabled={isUploading}
+                          onChange={(e) => handleTargetedPhotoUpload(e)}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
 
                   {/* Quick Folder Add Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
@@ -746,16 +776,29 @@ export default function InspectionView({
                           <p className="text-[10px] text-slate-400">{inspectionPhotos.length} Photos</p>
                         </div>
                       </div>
-                      <label className="text-[11px] font-bold text-amber-600 hover:text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md cursor-pointer">
-                        + Add
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          onChange={(e) => handleTargetedPhotoUpload(e, 'inspection')}
-                          className="hidden"
-                        />
-                      </label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCameraCategory('inspection');
+                            setIsCameraOpen(true);
+                          }}
+                          className="p-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md cursor-pointer"
+                          title="Take Inspection Photo"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                        </button>
+                        <label className="text-[11px] font-bold text-amber-600 hover:text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md cursor-pointer">
+                          + Add
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            onChange={(e) => handleTargetedPhotoUpload(e, 'inspection')}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
@@ -766,16 +809,29 @@ export default function InspectionView({
                           <p className="text-[10px] text-slate-400">{deliveryPhotos.length} Photos</p>
                         </div>
                       </div>
-                      <label className="text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded-md cursor-pointer">
-                        + Add
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          onChange={(e) => handleTargetedPhotoUpload(e, 'delivery')}
-                          className="hidden"
-                        />
-                      </label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCameraCategory('delivery');
+                            setIsCameraOpen(true);
+                          }}
+                          className="p-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md cursor-pointer"
+                          title="Take Delivery Photo"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                        </button>
+                        <label className="text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded-md cursor-pointer">
+                          + Add
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            onChange={(e) => handleTargetedPhotoUpload(e, 'delivery')}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between">
@@ -786,16 +842,29 @@ export default function InspectionView({
                           <p className="text-[10px] text-slate-400">{componentJobPhotos.length} Photos</p>
                         </div>
                       </div>
-                      <label className="text-[11px] font-bold text-slate-600 hover:text-slate-800 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md cursor-pointer">
-                        + Add
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          onChange={(e) => handleTargetedPhotoUpload(e, 'job')}
-                          className="hidden"
-                        />
-                      </label>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCameraCategory('job');
+                            setIsCameraOpen(true);
+                          }}
+                          className="p-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-md cursor-pointer"
+                          title="Take Component Photo"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                        </button>
+                        <label className="text-[11px] font-bold text-slate-600 hover:text-slate-800 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md cursor-pointer">
+                          + Add
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/*"
+                            onChange={(e) => handleTargetedPhotoUpload(e, 'job')}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -939,6 +1008,17 @@ export default function InspectionView({
           </div>
         </div>
       )}
+
+      {/* Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        title="Take Photo"
+        categoryName={cameraCategory ? `${cameraCategory.toUpperCase()} folder` : undefined}
+        onPhotosCaptured={(files) => {
+          processTargetedPhotoFiles(files, cameraCategory);
+        }}
+      />
     </div>
   );
 }

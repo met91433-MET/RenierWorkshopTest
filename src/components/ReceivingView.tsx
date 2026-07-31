@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Customer, ComponentMatrix, CustomColumn, Job, JobFile, deduplicateJobFiles } from '../types';
 import { generateNextComponentId } from '../utils/idUtils';
 import { compressFile } from '../utils/imageCompressor';
+import CameraCaptureModal from './CameraCaptureModal';
 import { 
   FileText, 
   Plus, 
@@ -10,7 +11,8 @@ import {
   CheckCircle, 
   Image as ImageIcon, 
   HelpCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Camera
 } from 'lucide-react';
 
 interface ReceivingViewProps {
@@ -77,13 +79,11 @@ export default function ReceivingView({
 
   // File uploading states
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+  const [cameraTarget, setCameraTarget] = useState<{ isDeliveryLevel: boolean; jobIdx?: number; categoryName?: string } | null>(null);
 
-  // Handle generic file to Base64 helper with compression
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, isDeliveryLevel: boolean, jobIdx?: number) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    const fileList: File[] = Array.from(files);
+  // Helper to process array of Files
+  const processFilesList = async (fileList: File[], isDeliveryLevel: boolean, jobIdx?: number) => {
     for (const file of fileList) {
       const { dataUrl, size } = await compressFile(file, 1024, 0.65);
       const jobFile: JobFile = {
@@ -105,7 +105,14 @@ export default function ReceivingView({
         });
       }
     }
+  };
 
+  // Handle generic file to Base64 helper with compression
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, isDeliveryLevel: boolean, jobIdx?: number) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    await processFilesList(Array.from(files), isDeliveryLevel, jobIdx);
     e.target.value = '';
   };
 
@@ -555,6 +562,18 @@ export default function ReceivingView({
                       <div>
                         <label className="block text-xs font-semibold text-slate-600 mb-1.5">Job / Component Pictures</label>
                         <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCameraTarget({ isDeliveryLevel: false, jobIdx: idx, categoryName: `Job #${idx + 1}` });
+                              setIsCameraModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 py-1.5 cursor-pointer shadow-2xs transition-all"
+                          >
+                            <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                            Take Photo
+                          </button>
+
                           <label className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 cursor-pointer select-none">
                             <Upload className="w-3.5 h-3.5 text-slate-500" />
                             Upload Component Photos
@@ -606,19 +625,34 @@ export default function ReceivingView({
                 <p className="text-xs font-semibold text-slate-700">Upload Delivery Note & Paperwork</p>
                 <p className="text-[10px] text-slate-400 mt-1">Images/PDFs up to 800KB</p>
                 
-                <input
-                  type="file"
-                  multiple
-                  id="delivery-file-upload"
-                  onChange={(e) => handleFileChange(e, true)}
-                  className="hidden"
-                />
-                <label
-                  htmlFor="delivery-file-upload"
-                  className="inline-flex mt-4 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
-                >
-                  Browse Files
-                </label>
+                <div className="flex items-center justify-center gap-2 mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCameraTarget({ isDeliveryLevel: true, categoryName: 'Delivery Paperwork' });
+                      setIsCameraModalOpen(true);
+                    }}
+                    className="inline-flex text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 py-1.5 cursor-pointer transition-colors items-center gap-1.5 shadow-2xs"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                    Take Photo
+                  </button>
+
+                  <input
+                    type="file"
+                    multiple
+                    id="delivery-file-upload"
+                    onChange={(e) => handleFileChange(e, true)}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="delivery-file-upload"
+                    className="inline-flex text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-1.5 cursor-pointer transition-colors items-center gap-1.5"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    Browse Files
+                  </label>
+                </div>
               </div>
 
               {/* List Paperwork Files */}
@@ -663,6 +697,19 @@ export default function ReceivingView({
           </div>
         </div>
       </form>
+
+      {/* Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        title="Take Photo"
+        categoryName={cameraTarget?.categoryName}
+        onPhotosCaptured={(files) => {
+          if (cameraTarget) {
+            processFilesList(files, cameraTarget.isDeliveryLevel, cameraTarget.jobIdx);
+          }
+        }}
+      />
     </div>
   );
 }
