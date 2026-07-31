@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Job, JobFile, CustomColumn, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Job, JobFile, CustomColumn, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog } from '../types';
+import { getConsumableAllocationLogs } from '../dbService';
 import { compressFile } from '../utils/imageCompressor';
 import JobCardDocument from './JobCardDocument';
 import CameraCaptureModal from './CameraCaptureModal';
@@ -37,7 +38,9 @@ import {
   Truck,
   FileImage,
   RotateCcw,
-  AlertTriangle
+  AlertTriangle,
+  ClipboardList,
+  PackageCheck
 } from 'lucide-react';
 
 interface JobEnquiriesViewProps {
@@ -62,8 +65,42 @@ export default function JobEnquiriesView({
   const [statusFilter, setStatusFilter] = useState<string>('WaitingGoAhead');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
-  // Modal active sub-tab: 'overview' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'
-  const [modalTab, setModalTab] = useState<'overview' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'>('overview');
+  // Modal active sub-tab: 'overview' | 'consumables' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'
+  const [modalTab, setModalTab] = useState<'overview' | 'consumables' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'>('overview');
+
+  // Consumable Allocation Logs State for Job Cards
+  const [consumableLogs, setConsumableLogs] = useState<ConsumableAllocationLog[]>([]);
+  const [loadingConsumables, setLoadingConsumables] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (selectedJob) {
+      setLoadingConsumables(true);
+      getConsumableAllocationLogs()
+        .then(logs => setConsumableLogs(logs))
+        .catch(err => console.error("Error fetching consumable logs:", err))
+        .finally(() => setLoadingConsumables(false));
+    }
+  }, [selectedJob]);
+
+  // Helper to match consumable allocation logs linked to the selected job card
+  const getLinkedConsumables = (job: Job | null): ConsumableAllocationLog[] => {
+    if (!job) return [];
+    const cardNo = job.jobCardDetails?.jobCardNumber?.trim().toUpperCase();
+    const jobId = job.id?.trim().toUpperCase();
+    const dnNo = job.deliveryNoteNumber?.trim().toUpperCase();
+
+    return consumableLogs.filter(log => {
+      if (!log.jobNumber) return false;
+      const jNo = log.jobNumber.trim().toUpperCase();
+      return Boolean(
+        (cardNo && jNo === cardNo) ||
+        (jobId && jNo === jobId) ||
+        (dnNo && jNo === dnNo)
+      );
+    });
+  };
+
+  const linkedConsumables = getLinkedConsumables(selectedJob);
 
   // Job Pictures State
   const [pictureCategoryFilter, setPictureCategoryFilter] = useState<'all' | 'delivery' | 'job' | 'inspection'>('all');
@@ -759,6 +796,23 @@ export default function JobEnquiriesView({
                 </button>
 
                 <button
+                  onClick={() => setModalTab('consumables')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    modalTab === 'consumables'
+                      ? 'bg-white text-amber-700 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                  }`}
+                >
+                  <ClipboardList className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Consumables Log</span>
+                  {linkedConsumables.length > 0 && (
+                    <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">
+                      {linkedConsumables.length}
+                    </span>
+                  )}
+                </button>
+
+                <button
                   onClick={() => setModalTab('pictures')}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
                     modalTab === 'pictures'
@@ -1126,6 +1180,206 @@ export default function JobEnquiriesView({
                           </p>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* LINKED CONSUMABLE LOGS SECTION IN OVERVIEW */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="bg-amber-50 p-2 rounded-xl text-amber-600 border border-amber-200/60">
+                          <ClipboardList className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Stores Sign-Out Audit</h4>
+                          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <span>Linked Consumables Log</span>
+                            {(selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id) && (
+                              <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-200 font-mono px-2 py-0.5 rounded-md font-bold">
+                                Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}
+                              </span>
+                            )}
+                          </h3>
+                        </div>
+                      </div>
+
+                      {linkedConsumables.length > 0 && (
+                        <div className="flex items-center gap-2 text-xs font-bold">
+                          <span className="bg-amber-50 text-amber-800 border border-amber-200 px-3 py-1 rounded-xl">
+                            {linkedConsumables.length} {linkedConsumables.length === 1 ? 'Entry' : 'Entries'}
+                          </span>
+                          <span className="bg-slate-100 text-slate-800 border border-slate-200 px-3 py-1 rounded-xl">
+                            {linkedConsumables.reduce((sum, item) => sum + (item.quantityAllocated || 0), 0)} Units Issued
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {loadingConsumables ? (
+                      <div className="text-center py-6 text-slate-400 text-xs font-medium">
+                        Loading linked consumable allocation logs...
+                      </div>
+                    ) : linkedConsumables.length === 0 ? (
+                      <div className="text-center py-8 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 p-4">
+                        <ClipboardList className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        <p className="text-xs font-bold text-slate-600">No consumables signed out for this job card yet</p>
+                        <p className="text-[11px] text-slate-400 mt-1 max-w-md mx-auto">
+                          When consumables are signed out in Stores referencing Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}, they will automatically appear here.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                        <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                              <th className="p-3">Consumable Item</th>
+                              <th className="p-3 text-center">Qty Issued</th>
+                              <th className="p-3">Employee Clock #</th>
+                              <th className="p-3">Machine #</th>
+                              <th className="p-3">Issued By</th>
+                              <th className="p-3 text-right">Date &amp; Time</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {linkedConsumables.map((log) => (
+                              <tr key={log.id} className="hover:bg-amber-50/20 transition-colors">
+                                <td className="p-3">
+                                  <div className="font-bold text-slate-800">{log.consumableDescription}</div>
+                                  {log.consumableTypeSize && (
+                                    <div className="text-[10px] text-slate-400 font-mono">{log.consumableTypeSize}</div>
+                                  )}
+                                </td>
+                                <td className="p-3 text-center">
+                                  <span className="font-mono font-extrabold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200/60">
+                                    {log.quantityAllocated}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <span className="font-mono font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                                    {log.clockNumber}
+                                  </span>
+                                </td>
+                                <td className="p-3 font-mono font-semibold text-slate-700">
+                                  {log.machineNumber || 'N/A'}
+                                </td>
+                                <td className="p-3 text-slate-600 font-medium">
+                                  {log.loggedBy || 'Stores Operator'}
+                                </td>
+                                <td className="p-3 text-right text-slate-500 font-mono text-[11px]">
+                                  {log.allocatedAt ? new Date(log.allocatedAt).toLocaleString() : 'N/A'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* SUB-TAB: CONSUMABLES LOG DEDICATED VIEW */}
+              {modalTab === 'consumables' && (
+                <div className="space-y-6">
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-amber-100 p-2.5 rounded-xl text-amber-700 border border-amber-200">
+                        <ClipboardList className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                          <span>Consumable Allocation Audit Log</span>
+                          {selectedJob.jobCardDetails?.jobCardNumber && (
+                            <span className="text-xs bg-amber-50 text-amber-800 font-mono px-2.5 py-0.5 rounded-lg border border-amber-200 font-bold">
+                              Job Card #{selectedJob.jobCardDetails.jobCardNumber}
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Complete history of workshop consumables signed out against this specific job card.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-center">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Sign-outs</span>
+                        <span className="text-base font-black text-slate-800">{linkedConsumables.length}</span>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 text-center">
+                        <span className="text-[10px] font-bold text-amber-600 uppercase block">Total Qty Units</span>
+                        <span className="text-base font-black text-amber-700">
+                          {linkedConsumables.reduce((acc, c) => acc + (c.quantityAllocated || 0), 0)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {linkedConsumables.length === 0 ? (
+                    <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 shadow-xs">
+                      <ClipboardList className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                      <h4 className="text-sm font-bold text-slate-800">No Consumables Logged</h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                        There are currently no consumable items signed out against Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}. Consumable allocations performed in Stores will automatically populate here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                      <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          Linked Allocation Records ({linkedConsumables.length})
+                        </span>
+                        <span className="text-xs text-slate-500 font-medium">
+                          Sorted by most recent sign-out
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                          <thead>
+                            <tr className="bg-slate-100/70 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                              <th className="p-3.5">Consumable Description</th>
+                              <th className="p-3.5 text-center">Quantity</th>
+                              <th className="p-3.5">Clock # / Employee</th>
+                              <th className="p-3.5">Machine #</th>
+                              <th className="p-3.5">Issued By</th>
+                              <th className="p-3.5 text-right">Date &amp; Time</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {linkedConsumables.map((log) => (
+                              <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="p-3.5">
+                                  <div className="font-bold text-slate-900 text-sm">{log.consumableDescription}</div>
+                                  {log.consumableTypeSize && (
+                                    <div className="text-xs text-slate-500 font-mono mt-0.5">{log.consumableTypeSize}</div>
+                                  )}
+                                </td>
+                                <td className="p-3.5 text-center">
+                                  <span className="font-mono font-black text-amber-800 bg-amber-100/80 px-3 py-1 rounded-lg border border-amber-200">
+                                    {log.quantityAllocated}
+                                  </span>
+                                </td>
+                                <td className="p-3.5">
+                                  <div className="inline-flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 font-mono font-bold text-slate-800">
+                                    <span>Clock:</span>
+                                    <span>{log.clockNumber}</span>
+                                  </div>
+                                </td>
+                                <td className="p-3.5 font-mono font-bold text-slate-700">
+                                  {log.machineNumber || 'N/A'}
+                                </td>
+                                <td className="p-3.5 text-slate-700 font-medium">
+                                  {log.loggedBy || 'Stores Staff'}
+                                </td>
+                                <td className="p-3.5 text-right text-slate-500 font-mono text-xs">
+                                  {log.allocatedAt ? new Date(log.allocatedAt).toLocaleString() : 'N/A'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </div>
