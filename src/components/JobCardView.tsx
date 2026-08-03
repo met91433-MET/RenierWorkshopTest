@@ -49,6 +49,19 @@ export default function JobCardView({
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Helper to compute 1 month from received date
+  const getDefaultDueDateForJob = (job?: Job | null) => {
+    if (job?.jobCardDetails?.dueDate) return job.jobCardDetails.dueDate;
+    const base = job?.dateReceived ? new Date(job.dateReceived) : new Date();
+    if (isNaN(base.getTime())) {
+      const fallback = new Date();
+      fallback.setMonth(fallback.getMonth() + 1);
+      return fallback.toISOString().split('T')[0];
+    }
+    base.setMonth(base.getMonth() + 1);
+    return base.toISOString().split('T')[0];
+  };
+
   // Job Card Form State
   const [assignedTechnician, setAssignedTechnician] = useState('');
   const [scheduledDate, setScheduledDate] = useState(new Date().toISOString().split('T')[0]);
@@ -57,7 +70,7 @@ export default function JobCardView({
   const [orderNumber, setOrderNumber] = useState('');
   const [yourRef, setYourRef] = useState('NONE');
   const [customerJobNumber, setCustomerJobNumber] = useState('NONE');
-  const [dueDate, setDueDate] = useState('31 Dec 2025');
+  const [dueDate, setDueDate] = useState('');
   const [workshopArea, setWorkshopArea] = useState('9B');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activePreviewTab, setActivePreviewTab] = useState<'page1' | 'page2' | 'all'>('all');
@@ -84,7 +97,7 @@ export default function JobCardView({
       setOrderNumber(selectedJob.jobCardDetails?.orderNumber || '');
       setYourRef(selectedJob.jobCardDetails?.yourRef || 'NONE');
       setCustomerJobNumber(selectedJob.jobCardDetails?.customerJobNumber || 'NONE');
-      setDueDate(selectedJob.jobCardDetails?.dueDate || '31 Dec 2025');
+      setDueDate(getDefaultDueDateForJob(selectedJob));
       setWorkshopArea(selectedJob.jobCardDetails?.workshopArea || '9B');
       setValidationError('');
     }

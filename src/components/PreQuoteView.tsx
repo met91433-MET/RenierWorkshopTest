@@ -114,9 +114,80 @@ export default function PreQuoteView({
   );
 
   // Get pricing matrix for the job currently selected as the active matrix source
-  const activeMatrix = selectedJobForMatrix 
-    ? componentsList.find(c => c.id === selectedJobForMatrix.componentType) 
-    : null;
+  const [selectedMatrixId, setSelectedMatrixId] = useState<string>('');
+
+  const findMatrixForJob = (job: Job | null): ComponentMatrix | undefined => {
+    if (!componentsList || componentsList.length === 0) return undefined;
+    if (!job) return componentsList[0];
+
+    const targetType = (job.componentType || '').trim();
+    const targetModel = (job.modelName || '').trim();
+
+    // 1. Direct match on ID or Name
+    let matched = componentsList.find(c => c.id === targetType || c.name === targetType);
+    if (matched) return matched;
+
+    // 2. Case and whitespace insensitive match
+    const cleanType = targetType.toLowerCase().replace(/\s+/g, '');
+    if (cleanType) {
+      matched = componentsList.find(c => 
+        c.id.toLowerCase().replace(/\s+/g, '') === cleanType || 
+        (c.name && c.name.toLowerCase().replace(/\s+/g, '') === cleanType) ||
+        c.id.toLowerCase().includes(cleanType) ||
+        (c.name && c.name.toLowerCase().includes(cleanType))
+      );
+      if (matched) return matched;
+    }
+
+    // 3. Match by model name in matrix models list
+    if (targetModel) {
+      const cleanModel = targetModel.toLowerCase().replace(/\s+/g, '');
+      matched = componentsList.find(c => 
+        c.models && c.models.some(m => m.toLowerCase().replace(/\s+/g, '') === cleanModel)
+      );
+      if (matched) return matched;
+    }
+
+    // 4. Fallback to first available pricing matrix
+    return componentsList[0];
+  };
+
+  const activeMatrix = selectedMatrixId 
+    ? componentsList.find(c => c.id === selectedMatrixId) || findMatrixForJob(selectedJobForMatrix)
+    : findMatrixForJob(selectedJobForMatrix);
+
+  // Helper to safely extract step price for a specific modelName
+  const getStepPrice = (stepObj: { stepName: string; prices: Record<string, number> } | undefined, modelName: string): number => {
+    if (!stepObj || !stepObj.prices) return 0;
+    if (!modelName) {
+      const firstVal = Object.values(stepObj.prices)[0];
+      return typeof firstVal === 'number' ? firstVal : 0;
+    }
+
+    // Direct key match
+    if (stepObj.prices[modelName] !== undefined) return stepObj.prices[modelName];
+
+    // Case / trim match
+    const cleanModel = modelName.trim().toLowerCase();
+    const exactKey = Object.keys(stepObj.prices).find(k => k.trim().toLowerCase() === cleanModel);
+    if (exactKey !== undefined) return stepObj.prices[exactKey];
+
+    // Substring match
+    const partialKey = Object.keys(stepObj.prices).find(k => 
+      k.trim().toLowerCase().includes(cleanModel) || cleanModel.includes(k.trim().toLowerCase())
+    );
+    if (partialKey !== undefined) return stepObj.prices[partialKey];
+
+    // Fallback to first available model price
+    const firstVal = Object.values(stepObj.prices)[0];
+    return typeof firstVal === 'number' ? firstVal : 0;
+  };
+
+  // Reset selected matrix override when selected job changes
+  useEffect(() => {
+    setSelectedMatrixId('');
+    setSelectedPredefinedStep('');
+  }, [selectedJobForMatrix]);
 
   // Sync selected job for matrix helper when group changes
   useEffect(() => {
@@ -175,7 +246,7 @@ export default function PreQuoteView({
     const stepObj = activeMatrix.steps.find(s => s.stepName === selectedPredefinedStep);
     if (!stepObj) return;
 
-    const price = stepObj.prices[selectedJobForMatrix.modelName] || 0;
+    const price = getStepPrice(stepObj, selectedJobForMatrix.modelName);
 
     setQuoteSteps(prev => [
       ...prev,
@@ -516,19 +587,33 @@ export default function PreQuoteView({
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
                     {/* Predefined Steps add */}
                     <div className="space-y-2 text-left">
-                      <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
-                        Add Step from Selected Matrix
-                      </label>
-                      <div className="flex gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
+                          Add Step from Matrix {activeMatrix ? `(${activeMatrix.name || activeMatrix.id})` : ''}
+                        </label>
+                        {componentsList.length > 1 && (
+                          <select
+                            value={selectedMatrixId || activeMatrix?.id || ''}
+                            onChange={(e) => setSelectedMatrixId(e.target.value)}
+                            className="text-[11px] font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg px-2 py-0.5 focus:outline-hidden shrink-0 max-w-[150px] truncate"
+                            title="Switch Matrix Source"
+                          >
+                            {componentsList.map(m => (
+                              <option key={m.id} value={m.id}>Matrix: {m.name || m.id}</option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                      <div className="flex gap-2 items-center">
                         <select
                           value={selectedPredefinedStep}
                           onChange={(e) => setSelectedPredefinedStep(e.target.value)}
-                          className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden"
+                          className="flex-1 min-w-0 w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden font-medium truncate"
                         >
                           <option value="">-- Choose step from matrix --</option>
                           {availablePredefinedSteps.map((name, idx) => {
                             const originalStep = activeMatrix?.steps.find(s => s.stepName === name);
-                            const price = selectedJobForMatrix && originalStep ? originalStep.prices[selectedJobForMatrix.modelName] : 0;
+                            const price = selectedJobForMatrix && originalStep ? getStepPrice(originalStep, selectedJobForMatrix.modelName) : 0;
                             return (
                               <option key={`${name}-${idx}`} value={name}>
                                 {name} (R{price})
@@ -543,15 +628,15 @@ export default function PreQuoteView({
                           type="button"
                           onClick={addPredefinedStep}
                           disabled={!selectedPredefinedStep}
-                          className="bg-purple-600 hover:bg-purple-700 disabled:opacity-55 text-white rounded-xl px-3 py-2 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                          className="shrink-0 whitespace-nowrap min-w-[75px] h-[36px] bg-purple-600 hover:bg-purple-700 disabled:opacity-55 text-white rounded-xl px-4 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
                         >
-                          <Plus className="w-3.5 h-3.5" />
-                          Add
+                          <Plus className="w-3.5 h-3.5 shrink-0" />
+                          <span>Add</span>
                         </button>
                       </div>
                       {!activeMatrix && selectedJobForMatrix && (
                         <p className="text-[10px] text-red-500 font-semibold mt-1">
-                          * Spindle pricing matrix was not found for component {selectedJobForMatrix.componentType}. Please define it in Admin Center.
+                          * Pricing matrix was not found for component {selectedJobForMatrix.componentType}. Please define it in Admin Center.
                         </p>
                       )}
                     </div>
@@ -561,7 +646,7 @@ export default function PreQuoteView({
                       <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
                         Add Custom / Manual Step
                       </label>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         <input
                           type="text"
                           placeholder="Step description (e.g. Specialized Boring)"
@@ -574,16 +659,16 @@ export default function PreQuoteView({
                           placeholder="Price"
                           value={customStepPrice}
                           onChange={(e) => setCustomStepPrice(e.target.value === '' ? '' : Number(e.target.value))}
-                          className="w-18 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden"
+                          className="w-20 shrink-0 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden"
                         />
                         <button
                           type="button"
                           onClick={addCustomStep}
                           disabled={!customStepName.trim() || customStepPrice === ''}
-                          className="bg-slate-700 hover:bg-slate-800 disabled:opacity-55 text-white rounded-xl px-3 py-2 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                          className="shrink-0 whitespace-nowrap min-w-[75px] h-[36px] bg-slate-700 hover:bg-slate-800 disabled:opacity-55 text-white rounded-xl px-4 py-2 text-xs font-bold transition-colors flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
                         >
-                          <Plus className="w-3.5 h-3.5" />
-                          Add
+                          <Plus className="w-3.5 h-3.5 shrink-0" />
+                          <span>Add</span>
                         </button>
                       </div>
                     </div>

@@ -47,6 +47,8 @@ interface JobEnquiriesViewProps {
   jobs: Job[];
   customColumns: CustomColumn[];
   onUpdateJob: (job: Job) => Promise<void>;
+  onDeleteJob?: (id: string) => Promise<void>;
+  onDeleteAllJobs?: () => Promise<void>;
   currentUser: any;
   jobCardFormat?: JobCardFormatConfig;
 }
@@ -55,18 +57,22 @@ export default function JobEnquiriesView({
   jobs,
   customColumns,
   onUpdateJob,
+  onDeleteJob,
+  onDeleteAllJobs,
   currentUser,
   jobCardFormat
 }: JobEnquiriesViewProps) {
   const format = jobCardFormat || DEFAULT_JOB_CARD_FORMAT;
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [showConfirmDeleteAllModal, setShowConfirmDeleteAllModal] = useState(false);
+  const [jobToDelete, setJobToDelete] = useState<Job | null>(null);
   // Default filter: 'WaitingGoAhead' (Jobs with job cards waiting for customer's go-ahead / order)
   const [statusFilter, setStatusFilter] = useState<string>('WaitingGoAhead');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
 
-  // Modal active sub-tab: 'overview' | 'consumables' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'
-  const [modalTab, setModalTab] = useState<'overview' | 'consumables' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'>('overview');
+  // Modal active sub-tab: 'overview' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'
+  const [modalTab, setModalTab] = useState<'overview' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'>('overview');
 
   // Consumable Allocation Logs State for Job Cards
   const [consumableLogs, setConsumableLogs] = useState<ConsumableAllocationLog[]>([]);
@@ -286,10 +292,23 @@ export default function JobEnquiriesView({
     setQualityReleaseSign(job.closingDetails?.qualityReleaseSign || currentUser?.displayName || currentUser?.email || 'Quality Inspector');
     setCloseReasonOption(job.closingDetails?.closeReason || 'completed');
 
+    // Helper for 1-month default due date
+    const getDefaultDueDateForJob = (job: Job) => {
+      if (job.jobCardDetails?.dueDate) return job.jobCardDetails.dueDate;
+      const base = new Date(job.dateReceived || Date.now());
+      if (isNaN(base.getTime())) {
+        const fallback = new Date();
+        fallback.setMonth(fallback.getMonth() + 1);
+        return fallback.toISOString().split('T')[0];
+      }
+      base.setMonth(base.getMonth() + 1);
+      return base.toISOString().split('T')[0];
+    };
+
     // Initialize Edit Form
     setEditTechnician(job.jobCardDetails?.assignedTechnician || '');
     setEditScheduledDate(job.jobCardDetails?.scheduledDate || new Date().toISOString().split('T')[0]);
-    setEditDueDate(job.jobCardDetails?.dueDate || '31 Dec 2025');
+    setEditDueDate(getDefaultDueDateForJob(job));
     setEditWorkshopArea(job.jobCardDetails?.workshopArea || '9B');
     setEditOrderNumber(job.jobCardDetails?.orderNumber || '');
     setEditYourRef(job.jobCardDetails?.yourRef || '');
@@ -306,7 +325,7 @@ export default function JobEnquiriesView({
     setGoAheadYourRef(job.jobCardDetails?.yourRef || '');
     setGoAheadTechnician(job.jobCardDetails?.assignedTechnician || '');
     setGoAheadScheduledDate(job.jobCardDetails?.scheduledDate || new Date().toISOString().split('T')[0]);
-    setGoAheadDueDate(job.jobCardDetails?.dueDate || '31 Dec 2025');
+    setGoAheadDueDate(getDefaultDueDateForJob(job));
   };
 
   const handleSaveGoAhead = async (e: React.FormEvent) => {
@@ -585,26 +604,40 @@ export default function JobEnquiriesView({
             />
           </div>
 
-          {/* Status filter bar */}
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 border border-slate-200/60 p-1 rounded-xl shadow-xs self-start lg:self-auto">
-            {[
-              { id: 'WaitingGoAhead', label: `Waiting Go-Ahead (${waitingGoAheadCount})` },
-              { id: 'GoAhead', label: `Go-Ahead (${goAheadCount})` },
-              { id: 'Closed', label: `Closed Jobs (${closedJobsCount})` },
-              { id: 'ALL', label: `All Assigned (${totalJobCardsCount})` }
-            ].map((tab) => (
+          {/* Status filter bar & Delete All */}
+          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 border border-slate-200/60 p-1 rounded-xl shadow-xs">
+              {[
+                { id: 'WaitingGoAhead', label: `Waiting Go-Ahead (${waitingGoAheadCount})` },
+                { id: 'GoAhead', label: `Go-Ahead (${goAheadCount})` },
+                { id: 'Closed', label: `Closed Jobs (${closedJobsCount})` },
+                { id: 'ALL', label: `All Assigned (${totalJobCardsCount})` }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setStatusFilter(tab.id)}
+                  className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                    statusFilter === tab.id
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {onDeleteAllJobs && jobs.length > 0 && (
               <button
-                key={tab.id}
-                onClick={() => setStatusFilter(tab.id)}
-                className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                  statusFilter === tab.id
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                }`}
+                type="button"
+                onClick={() => setShowConfirmDeleteAllModal(true)}
+                className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                title="Delete all captured component entries"
               >
-                {tab.label}
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete All Captured ({jobs.length})</span>
               </button>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -721,6 +754,18 @@ export default function JobEnquiriesView({
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
 
+                        {/* Delete Single Job */}
+                        {onDeleteJob && (
+                          <button
+                            type="button"
+                            onClick={() => setJobToDelete(job)}
+                            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer"
+                            title="Delete Captured Component Entry"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
                         {/* Close / Sign Off */}
                         {job.status === 'JobCardCreated' && (
                           <button
@@ -793,23 +838,6 @@ export default function JobEnquiriesView({
                 >
                   <Eye className="w-3.5 h-3.5" />
                   Job Details
-                </button>
-
-                <button
-                  onClick={() => setModalTab('consumables')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                    modalTab === 'consumables'
-                      ? 'bg-white text-amber-700 shadow-xs border border-slate-200'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-                  }`}
-                >
-                  <ClipboardList className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Consumables Log</span>
-                  {linkedConsumables.length > 0 && (
-                    <span className="bg-amber-100 text-amber-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">
-                      {linkedConsumables.length}
-                    </span>
-                  )}
                 </button>
 
                 <button
@@ -1011,7 +1039,7 @@ export default function JobEnquiriesView({
                             <p className="font-semibold text-slate-800 mt-0.5">{selectedJob.modelName}</p>
                           </div>
                           <div>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase">Serial Number</p>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">Part Number</p>
                             <p className="font-mono font-bold text-slate-800 mt-0.5">{selectedJob.serialNumber || 'N/A'}</p>
                           </div>
                           <div>
@@ -1122,23 +1150,16 @@ export default function JobEnquiriesView({
                                 <p className="font-mono font-extrabold text-emerald-700 mt-0.5">{selectedJob.jobCardDetails.jobCardNumber || 'N/A'}</p>
                               </div>
                               <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase">Lead Technician</p>
-                                <p className="font-semibold text-slate-800 mt-0.5">{selectedJob.jobCardDetails.assignedTechnician || 'N/A'}</p>
-                              </div>
-                              <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase">Workshop Area</p>
                                 <p className="font-mono font-bold text-slate-800 mt-0.5">{selectedJob.jobCardDetails.workshopArea || '9B'}</p>
                               </div>
                               <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase">Scheduled Start</p>
-                                <p className="font-semibold text-slate-800 mt-0.5">{selectedJob.jobCardDetails.scheduledDate || 'N/A'}</p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Customer Ref</p>
+                                <p className="font-semibold text-slate-800 mt-0.5">{selectedJob.jobCardDetails.yourRef || 'NONE'}</p>
                               </div>
-                            </div>
-
-                            <div>
-                              <p className="text-[10px] font-bold text-slate-400 uppercase">Technical Directives</p>
-                              <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1 text-[11px] font-mono leading-relaxed max-h-20 overflow-y-auto text-slate-600">
-                                {selectedJob.jobCardDetails.instructions || 'No special technical instructions.'}
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase">Target Due Date</p>
+                                <p className="font-semibold text-slate-800 mt-0.5">{selectedJob.jobCardDetails.dueDate || 'N/A'}</p>
                               </div>
                             </div>
                           </div>
@@ -1275,113 +1296,6 @@ export default function JobEnquiriesView({
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-
-              {/* SUB-TAB: CONSUMABLES LOG DEDICATED VIEW */}
-              {modalTab === 'consumables' && (
-                <div className="space-y-6">
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-amber-100 p-2.5 rounded-xl text-amber-700 border border-amber-200">
-                        <ClipboardList className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                          <span>Consumable Allocation Audit Log</span>
-                          {selectedJob.jobCardDetails?.jobCardNumber && (
-                            <span className="text-xs bg-amber-50 text-amber-800 font-mono px-2.5 py-0.5 rounded-lg border border-amber-200 font-bold">
-                              Job Card #{selectedJob.jobCardDetails.jobCardNumber}
-                            </span>
-                          )}
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Complete history of workshop consumables signed out against this specific job card.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-center">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Sign-outs</span>
-                        <span className="text-base font-black text-slate-800">{linkedConsumables.length}</span>
-                      </div>
-                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5 text-center">
-                        <span className="text-[10px] font-bold text-amber-600 uppercase block">Total Qty Units</span>
-                        <span className="text-base font-black text-amber-700">
-                          {linkedConsumables.reduce((acc, c) => acc + (c.quantityAllocated || 0), 0)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {linkedConsumables.length === 0 ? (
-                    <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 shadow-xs">
-                      <ClipboardList className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                      <h4 className="text-sm font-bold text-slate-800">No Consumables Logged</h4>
-                      <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                        There are currently no consumable items signed out against Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}. Consumable allocations performed in Stores will automatically populate here.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                      <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                          Linked Allocation Records ({linkedConsumables.length})
-                        </span>
-                        <span className="text-xs text-slate-500 font-medium">
-                          Sorted by most recent sign-out
-                        </span>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs text-slate-600 border-collapse">
-                          <thead>
-                            <tr className="bg-slate-100/70 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                              <th className="p-3.5">Consumable Description</th>
-                              <th className="p-3.5 text-center">Quantity</th>
-                              <th className="p-3.5">Clock # / Employee</th>
-                              <th className="p-3.5">Machine #</th>
-                              <th className="p-3.5">Issued By</th>
-                              <th className="p-3.5 text-right">Date &amp; Time</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-medium">
-                            {linkedConsumables.map((log) => (
-                              <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="p-3.5">
-                                  <div className="font-bold text-slate-900 text-sm">{log.consumableDescription}</div>
-                                  {log.consumableTypeSize && (
-                                    <div className="text-xs text-slate-500 font-mono mt-0.5">{log.consumableTypeSize}</div>
-                                  )}
-                                </td>
-                                <td className="p-3.5 text-center">
-                                  <span className="font-mono font-black text-amber-800 bg-amber-100/80 px-3 py-1 rounded-lg border border-amber-200">
-                                    {log.quantityAllocated}
-                                  </span>
-                                </td>
-                                <td className="p-3.5">
-                                  <div className="inline-flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200 font-mono font-bold text-slate-800">
-                                    <span>Clock:</span>
-                                    <span>{log.clockNumber}</span>
-                                  </div>
-                                </td>
-                                <td className="p-3.5 font-mono font-bold text-slate-700">
-                                  {log.machineNumber || 'N/A'}
-                                </td>
-                                <td className="p-3.5 text-slate-700 font-medium">
-                                  {log.loggedBy || 'Stores Staff'}
-                                </td>
-                                <td className="p-3.5 text-right text-slate-500 font-mono text-xs">
-                                  {log.allocatedAt ? new Date(log.allocatedAt).toLocaleString() : 'N/A'}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -1793,11 +1707,12 @@ export default function JobEnquiriesView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Serial Number</label>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Part Number</label>
                       <input
                         type="text"
                         value={editSerialNumber}
                         onChange={(e) => setEditSerialNumber(e.target.value)}
+                        placeholder="e.g. PN-552A"
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-hidden focus:border-indigo-500"
                       />
                     </div>
@@ -1805,17 +1720,7 @@ export default function JobEnquiriesView({
 
                   <div className="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Assigned Lead Technician</label>
-                      <input
-                        type="text"
-                        value={editTechnician}
-                        onChange={(e) => setEditTechnician(e.target.value)}
-                        placeholder="e.g. Master Tech John Doe"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Workshop Bay / Area</label>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Workshop Area</label>
                       <input
                         type="text"
                         value={editWorkshopArea}
@@ -1825,18 +1730,9 @@ export default function JobEnquiriesView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Scheduled Start Date</label>
-                      <input
-                        type="date"
-                        value={editScheduledDate}
-                        onChange={(e) => setEditScheduledDate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Target Due Date</label>
                       <input
-                        type="text"
+                        type="date"
                         value={editDueDate}
                         onChange={(e) => setEditDueDate(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
@@ -1858,27 +1754,6 @@ export default function JobEnquiriesView({
                         value={editYourRef}
                         onChange={(e) => setEditYourRef(e.target.value)}
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-slate-100 pt-4 space-y-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Required Parts &amp; Materials</label>
-                      <textarea
-                        rows={2}
-                        value={editRequiredParts}
-                        onChange={(e) => setEditRequiredParts(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-medium focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Technical Directives &amp; Workshop Instructions</label>
-                      <textarea
-                        rows={3}
-                        value={editInstructions}
-                        onChange={(e) => setEditInstructions(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-mono focus:outline-hidden focus:border-indigo-500"
                       />
                     </div>
                   </div>
@@ -2232,36 +2107,10 @@ export default function JobEnquiriesView({
 
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-                          Assigned Lead Technician
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Master Tech John Doe"
-                          value={goAheadTechnician}
-                          onChange={(e) => setGoAheadTechnician(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-                          Scheduled Start Date
-                        </label>
-                        <input
-                          type="date"
-                          value={goAheadScheduledDate}
-                          onChange={(e) => setGoAheadScheduledDate(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
                           Target Completion Due Date
                         </label>
                         <input
-                          type="text"
-                          placeholder="e.g. 31 Dec 2025"
+                          type="date"
                           value={goAheadDueDate}
                           onChange={(e) => setGoAheadDueDate(e.target.value)}
                           className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
@@ -2434,6 +2283,79 @@ export default function JobEnquiriesView({
           processPhotoFiles(files, cameraOverrideCategory);
         }}
       />
+
+      {/* Delete Single Job Modal */}
+      {jobToDelete && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-red-200 p-6 max-w-md w-full space-y-4 animate-in fade-in zoom-in-95 text-left">
+            <div className="flex items-center gap-3 text-red-600">
+              <Trash2 className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-extrabold text-slate-900">Delete Captured Component</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete captured component <strong className="text-slate-900">{jobToDelete.id}</strong> ({jobToDelete.componentType} - {jobToDelete.modelName})? This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setJobToDelete(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const targetId = jobToDelete.id;
+                  setJobToDelete(null);
+                  if (onDeleteJob) {
+                    await onDeleteJob(targetId);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Delete Entry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Jobs Modal */}
+      {showConfirmDeleteAllModal && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-red-200 p-6 max-w-md w-full space-y-4 animate-in fade-in zoom-in-95 text-left">
+            <div className="flex items-center gap-3 text-red-600">
+              <Trash2 className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-extrabold text-slate-900">Delete All Captured Components ({jobs.length})</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete <strong>ALL {jobs.length} captured component entries</strong>? This will purge all jobs, receiving details, and inspection reports and cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowConfirmDeleteAllModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setShowConfirmDeleteAllModal(false);
+                  if (onDeleteAllJobs) {
+                    await onDeleteAllJobs();
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Delete All Captured Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

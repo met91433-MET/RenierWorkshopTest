@@ -26,6 +26,8 @@ import {
   saveMachine,
   deleteMachine,
   deleteAllMachines,
+  deleteJob,
+  deleteAllJobs,
   saveCustomColumns,
   saveComponentMatrix,
   updateUserPermissions,
@@ -156,6 +158,13 @@ export default function App() {
   const loadAllERPData = async () => {
     setDataLoading(true);
     try {
+      // Perform initial purge if required by user
+      const PURGE_KEY = 'mes_jobs_purged_v3';
+      if (!localStorage.getItem(PURGE_KEY)) {
+        await deleteAllJobs();
+        localStorage.setItem(PURGE_KEY, 'true');
+      }
+
       const fetchedJobs = await getJobs();
       const fetchedCustomers = await getCustomers();
       const fetchedMachines = await getMachines();
@@ -179,6 +188,24 @@ export default function App() {
       console.error("Error loading ERP data:", e);
     } finally {
       setDataLoading(false);
+    }
+  };
+
+  const handleDeleteJob = async (id: string) => {
+    setJobs(prev => prev.filter(j => j.id !== id));
+    try {
+      await deleteJob(id);
+    } catch (err) {
+      console.error("Error deleting job:", err);
+    }
+  };
+
+  const handleDeleteAllJobs = async () => {
+    setJobs([]);
+    try {
+      await deleteAllJobs();
+    } catch (err) {
+      console.error("Error deleting all jobs:", err);
     }
   };
 
@@ -552,6 +579,8 @@ export default function App() {
                 jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
                 customColumns={customColumns}
                 onUpdateJob={handleUpdateJob}
+                onDeleteJob={handleDeleteJob}
+                onDeleteAllJobs={handleDeleteAllJobs}
                 currentUser={userProfile}
                 jobCardFormat={jobCardFormat}
               />

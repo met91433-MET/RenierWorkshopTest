@@ -84,8 +84,16 @@ export default function JobCardDocument({
   // Border thickness helper
   const borderClass = format.borderWidth === 'thin' ? 'border' : format.borderWidth === 'thick' ? 'border-[3px]' : 'border-2';
 
-  // Logo size classes (Doubled size)
-  const logoSizeClass = format.logoSize === 'small' ? 'w-12 h-12' : format.logoSize === 'large' ? 'w-24 h-24' : 'w-16 h-16';
+  // Logo size classes
+  const logoSizeClass = format.logoSize === 'small' ? 'h-10 max-w-[140px]' : format.logoSize === 'large' ? 'h-20 max-w-[240px]' : 'h-14 max-w-[180px]';
+
+  // Customer 3-letter code helper
+  const getCustomerCode = (name?: string) => {
+    if (!name) return 'NA';
+    const clean = name.trim().replace(/[^a-zA-Z0-9]/g, '');
+    if (clean.length === 0) return 'NA';
+    return clean.substring(0, 3).toUpperCase();
+  };
 
   const renderPage2Content = () => (
     <div className="flex-1 flex flex-col min-h-0 justify-between">
@@ -108,7 +116,7 @@ export default function JobCardDocument({
             </div>
             <div className="border-r border-black/10 pr-4 leading-tight text-left">
               <span className="text-[12px] text-slate-400 uppercase block font-bold">Item Description</span>
-              <span className="font-bold text-[15px]">{jobData.modelName} {jobData.componentType} (F)-000</span>
+              <span className="font-bold text-[15px]">{jobData.modelName} {jobData.componentType}</span>
             </div>
             <div className="leading-tight text-left">
               <span className="text-[12px] text-slate-400 uppercase block font-bold">Job Card #</span>
@@ -170,14 +178,7 @@ export default function JobCardDocument({
           <div className={`flex items-center gap-3.5 ${format.logoAlignment === 'center' ? 'flex-1 justify-center' : ''}`}>
             {format.showCompanyLogo && (
               <div className={`relative ${logoSizeClass} flex-shrink-0 flex items-center justify-center`}>
-                {format.logoUrl ? (
-                  <img src={format.logoUrl} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                  <svg viewBox="0 0 100 100" className="w-full h-full text-emerald-600 fill-current">
-                    <path d="M50 35c-8.3 0-15 6.7-15 15s6.7 15 15 15 15-6.7 15-15-6.7-15-15-15zm0 25c-5.5 0-10-4.5-10-10s4.5-10 10-10 10 4.5 10 10-4.5 10-10 10z" />
-                    <path d="M91.5 44.5l-6.8-2.2c-.6-2.1-1.6-4.1-2.8-5.9l4.1-5.8c.8-1.1.7-2.6-.3-3.6l-5.7-5.7c-1-.1-2.5-.2-3.6.6l-5.8 4.1c-1.8-1.2-3.8-2.2-5.9-2.8l-2.2-6.8c-.4-1.3-1.6-2.2-3-2.2h-8c-1.4 0-2.6.9-3 2.2l-2.2 6.8c-2.1.6-4.1 1.6-5.9 2.8l-5.8-4.1c-1.1-.8-2.6-.7-3.6.3l-5.7 5.7c-1 1-1.1 2.5-.3 3.6l4.1 5.8c-1.2 1.8-2.2 3.8-2.8 5.9l-6.8 2.2c-1.3.4-2.2 1.6-2.2 3v8c0 1.4.9 2.6 2.2 3l6.8 2.2c.6 2.1 1.6 4.1 2.8 5.9l-4.1 5.8c-.8 1.1-.7 2.6.3 3.6l5.7 5.7c1 1 2.5 1.1 3.6.3l5.8-4.1c1.8 1.2 3.8 2.2 5.9 2.8l2.2 6.8c.4 1.3 1.6 2.2 3 2.2h8c1.4 0 2.6-.9 3-2.2l2.2-6.8c2.1-.6 4.1-1.6 5.9-2.8l5.8 4.1c1.1.8 2.6.7 3.6-.3l5.7-5.7c1-1 1.1-2.5.3-3.6l-4.1-5.8c1.2-1.8 2.2-3.8 2.8-5.9l6.8-2.2c1.3-.4 2.2-1.6 2.2-3v-8c0-1.4-.9-2.6-2.2-3zm-41.5 18c-7.2 0-13-5.8-13-13s5.8-13 13-13 13 5.8 13 13-5.8 13-13 13z" />
-                  </svg>
-                )}
+                <img src={format.logoUrl || "/metalogik_logo.png"} alt="METALOGIK Logo" className="w-full h-full object-contain" />
               </div>
             )}
             <div className="text-left leading-tight">
@@ -252,7 +253,7 @@ export default function JobCardDocument({
           {/* Sub-Details Table */}
           <div className="col-span-5 flex flex-col text-[13px]">
             <div className="flex justify-between items-center px-2 py-1 bg-blue-50/80 border-b-2 border-black text-[11px] font-bold text-slate-600">
-              <span className="text-blue-700 font-mono font-black">&lt;NA&gt;</span>
+              <span className="text-blue-700 font-mono font-black">{getCustomerCode(jobData.customerName)}</span>
               <span>{details.jobCardCreatedAt || new Date().toISOString().split('T')[0]} 10:49:46</span>
             </div>
 
@@ -265,7 +266,7 @@ export default function JobCardDocument({
               <div className="col-span-2 p-1.5 font-bold text-slate-900 border-l-2 border-black text-left font-mono text-[14px]">{jobData.modelName || '960'}</div>
             </div>
             <div className="grid grid-cols-3 border-b-2 border-black">
-              <div className="p-1.5 font-bold text-slate-600 uppercase text-[11px] flex items-center bg-slate-50">{format.labels.leadTechnician}</div>
+              <div className="p-1.5 font-bold text-slate-600 uppercase text-[11px] flex items-center bg-slate-50">{format.labels.leadTechnician || "Status"}</div>
               <div className="col-span-2 p-1.5 font-bold border-l-2 border-black text-left font-mono text-[14px]" style={{ color: accentColor }}>
                 {details.assignedTechnician ? details.assignedTechnician.toUpperCase() : '2604 EDWARD'}
               </div>
@@ -284,7 +285,7 @@ export default function JobCardDocument({
       {format.sections.find(s => s.id === 'model_sub_bar')?.enabled !== false && (
         <div className={`border-x-2 border-b-2 border-black bg-slate-100 flex justify-between items-center px-4 py-2 text-[16px] font-black text-slate-900 leading-none`}>
           <span className="font-mono font-black text-[18px]" style={{ color: accentColor }}>{jobData.modelName || '960'}</span>
-          <span className="uppercase font-display tracking-widest text-[16px]">{jobData.modelName || '960'} {jobData.componentType.toUpperCase()} (F)-000</span>
+          <span className="uppercase font-display tracking-widest text-[16px]">{jobData.modelName || ''} {jobData.componentType || ''}</span>
         </div>
       )}
 
@@ -294,7 +295,7 @@ export default function JobCardDocument({
           <div>
             <div className="flex justify-between items-start mb-3">
               <h3 className="text-[14px] font-extrabold text-slate-600 tracking-wider uppercase">
-                {format.labels.specialInstructions || "APPROVED REPAIR WORK PROCEDURES & SPECIAL TECHNICAL INSTRUCTIONS"}
+                {format.labels.specialInstructions || "APPROVED REPAIR WORK PROCEDURES"}
               </h3>
               {format.showAreaBadge && (
                 <div className="border-2 border-blue-600 rounded-lg p-1.5 text-center min-w-[65px] bg-white shadow-xs">
@@ -323,14 +324,7 @@ export default function JobCardDocument({
                       );
                     })}
 
-                    {details.instructions && (
-                      <div className="mt-3 pt-3 border-t border-slate-300 text-slate-900 whitespace-pre-line leading-relaxed font-semibold text-[15px] break-words">
-                        <span className="text-[12px] text-slate-500 uppercase font-black tracking-wider block mb-1">Special Technical Instructions:</span>
-                        {details.instructions}
-                      </div>
-                    )}
-
-                    {displaySteps.length === 0 && !details.instructions && (
+                    {displaySteps.length === 0 && (
                       <div className="font-bold text-slate-800 tracking-wider py-3 text-[16px]">
                         FOR TEST PURPOSES ONLY
                       </div>

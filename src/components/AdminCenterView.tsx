@@ -306,6 +306,7 @@ export default function AdminCenterView({
   const [isUploadingMachinesExcel, setIsUploadingMachinesExcel] = useState(false);
   const [machineToDelete, setMachineToDelete] = useState<Machine | null>(null);
   const [showConfirmDeleteAllModal, setShowConfirmDeleteAllModal] = useState(false);
+  const [matrixToDelete, setMatrixToDelete] = useState<ComponentMatrix | null>(null);
 
   // Form state for adding / editing a machine
   const [machineForm, setMachineForm] = useState({
@@ -724,8 +725,9 @@ export default function AdminCenterView({
 
   const handleDeleteComponentTable = async (id: string) => {
     await onDeleteComponentMatrix(id);
-    setSelectedCompMatrixId(componentsList[0]?.id || '');
-    alert("Pricing table deleted.");
+    const remaining = componentsList.filter(c => c.id !== id);
+    setSelectedCompMatrixId(remaining[0]?.id || '');
+    setMatrixToDelete(null);
   };
 
   // Excel File Upload for Pricing Matrix
@@ -1221,8 +1223,8 @@ export default function AdminCenterView({
               {activeMatrix && (
                 <button
                   type="button"
-                  onClick={() => handleDeleteComponentTable(activeMatrix.id)}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 border border-transparent rounded-lg px-2.5 py-1.5"
+                  onClick={() => setMatrixToDelete(activeMatrix)}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 border border-transparent rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Delete Entire Matrix Table
@@ -2614,6 +2616,38 @@ export default function AdminCenterView({
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 Delete All Machines
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Custom Confirm Delete Matrix Table Modal */}
+      {matrixToDelete && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-red-200 p-6 max-w-md w-full space-y-4 animate-in fade-in zoom-in-95 text-left">
+            <div className="flex items-center gap-3 text-red-600">
+              <Trash2 className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-extrabold text-slate-900">Delete Pricing Matrix Table</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete the <strong className="text-slate-900">{matrixToDelete.name} ({matrixToDelete.id})</strong> pricing matrix table? This will remove all step operations and model pricing rows associated with this component type and cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setMatrixToDelete(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleDeleteComponentTable(matrixToDelete.id);
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
+              >
+                Delete Matrix Table
               </button>
             </div>
           </div>

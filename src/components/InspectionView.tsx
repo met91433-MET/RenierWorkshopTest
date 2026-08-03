@@ -458,15 +458,6 @@ export default function InspectionView({
                   </div>
 
                   <div className="flex items-center gap-2 self-start sm:self-auto">
-                    <button
-                      type="button"
-                      onClick={() => setActiveSliderMode('upload')}
-                      className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl transition-all cursor-pointer shadow-2xs"
-                    >
-                      <Camera className="w-3.5 h-3.5 text-amber-500" />
-                      <span>Upload Photos ({selectedJob.files?.length || 0})</span>
-                    </button>
-
                     <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
                       {selectedJob.status}
                     </span>
@@ -538,18 +529,6 @@ export default function InspectionView({
                       value={findings}
                       onChange={(e) => setFindings(e.target.value)}
                       placeholder="Describe specific damage, wear measurements, cracked housings, or rebuilding required..."
-                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:outline-hidden focus:border-amber-500"
-                    />
-                  </div>
-
-                  {/* Inspector Internal Notes */}
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1.5">Internal Technical Notes</label>
-                    <textarea
-                      rows={2}
-                      value={inspectorNotes}
-                      onChange={(e) => setInspectorNotes(e.target.value)}
-                      placeholder="Add any internal suggestions for the pre-quoting team..."
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:outline-hidden focus:border-amber-500"
                     />
                   </div>

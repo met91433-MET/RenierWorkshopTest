@@ -71,12 +71,12 @@ export async function getCustomColumns(): Promise<CustomColumn[]> {
   try {
     const configDoc = await getDoc(doc(db, 'config', CONFIG_DOC_ID));
     if (configDoc.exists()) {
-      return (configDoc.data().customColumns as CustomColumn[]) || [];
+      const cols = (configDoc.data().customColumns as CustomColumn[]) || [];
+      return cols.filter(c => c.id !== 'damage_severity' && c.label !== 'Damage Severity Level');
     }
     // Seed default custom columns if empty
     const defaultCols: CustomColumn[] = [
-      { id: 'transport_sheet_no', label: 'Transport Sheet Number', type: 'text' },
-      { id: 'damage_severity', label: 'Damage Severity Level', type: 'text' }
+      { id: 'transport_sheet_no', label: 'Transport Sheet Number', type: 'text' }
     ];
     await setDoc(doc(db, 'config', CONFIG_DOC_ID), { customColumns: defaultCols });
     return defaultCols;
@@ -287,6 +287,18 @@ export async function deleteJob(id: string): Promise<void> {
   await deleteDoc(doc(db, 'jobs', id));
 }
 
+export async function deleteAllJobs(): Promise<void> {
+  try {
+    const snapshot = await getDocs(collection(db, 'jobs'));
+    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    console.log(`Deleted ${snapshot.docs.length} job entries from database.`);
+  } catch (error) {
+    console.error("Error deleting all jobs:", error);
+    handleFirestoreError(error, OperationType.DELETE, 'jobs');
+  }
+}
+
 // ==========================================
 // 6. DATABASE AUTO-SEEDING FOR FIRST RUN
 // ==========================================
@@ -444,103 +456,14 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     const configSnap = await getDoc(doc(db, 'config', CONFIG_DOC_ID));
     if (!configSnap.exists()) {
       const defaultCols: CustomColumn[] = [
-        { id: 'transport_sheet_no', label: 'Transport Sheet Number', type: 'text' },
-        { id: 'damage_severity', label: 'Damage Severity Level', type: 'text' }
+        { id: 'transport_sheet_no', label: 'Transport Sheet Number', type: 'text' }
       ];
       await setDoc(doc(db, 'config', CONFIG_DOC_ID), { customColumns: defaultCols });
     }
 
-    // 4. Seed sample jobs if empty
-    const jobsSnap = await getDocs(collection(db, 'jobs'));
-    if (jobsSnap.empty) {
-      console.log("Seeding default jobs...");
-      const defaultJobs: Job[] = [
-        {
-          id: 'C00001',
-          deliveryNoteNumber: 'DN-9941',
-          customerId: 'cust-cat',
-          customerName: 'Caterpillar Mining Division',
-          componentType: 'Spindle',
-          modelName: '777 Rear',
-          serialNumber: 'SN-CAT-88912',
-          status: 'Received',
-          customFields: {
-            transport_sheet_no: 'TR-502',
-            damage_severity: 'Medium'
-          },
-          dateReceived: new Date().toISOString().split('T')[0],
-          capturedBy: 'Default Receiver',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'C00002',
-          deliveryNoteNumber: 'DN-9941',
-          customerId: 'cust-cat',
-          customerName: 'Caterpillar Mining Division',
-          componentType: 'Wheel Hub',
-          modelName: 'H100 Heavy',
-          serialNumber: 'SN-CAT-4451A',
-          status: 'Inspected',
-          customFields: {
-            transport_sheet_no: 'TR-502',
-            damage_severity: 'High'
-          },
-          dateReceived: new Date().toISOString().split('T')[0],
-          capturedBy: 'Default Receiver',
-          inspectionDetails: {
-            inspectorName: 'Bob Inspector',
-            inspectedAt: new Date().toISOString().split('T')[0],
-            customerInstructions: 'Perform full bearing refit and CNC lathe rework.',
-            findings: 'Spigot face is worn down by 1.2mm, microcracks detected near inner flange ring.',
-            inspectorNotes: 'Needs 2 hours lathe machining plus standard steps.'
-          },
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        },
-        {
-          id: 'C00003',
-          deliveryNoteNumber: 'DN-8872',
-          customerId: 'cust-bw',
-          customerName: 'Barloworld Equipment',
-          componentType: 'Spindle',
-          modelName: '630 Front',
-          serialNumber: 'SN-BAR-771',
-          status: 'PreQuoted',
-          customFields: {
-            transport_sheet_no: 'TR-211',
-            damage_severity: 'Low'
-          },
-          dateReceived: new Date(Date.now() - 48 * 3600 * 1000).toISOString().split('T')[0],
-          capturedBy: 'Default Receiver',
-          inspectionDetails: {
-            inspectorName: 'Bob Inspector',
-            inspectedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString().split('T')[0],
-            customerInstructions: 'Standard re-chrome and grinding.',
-            findings: 'Minor corrosion on journal sleeve, dimensions are salvageable.',
-            inspectorNotes: 'Journals show light galling, standard re-chrome required.'
-          },
-          preQuoteDetails: {
-            steps: [
-              { stepName: 'Sandblasting', price: 120 },
-              { stepName: 'Crack Detection', price: 200 },
-              { stepName: 'Hard Chrome Plating', price: 950 },
-              { stepName: 'Precision Grinding', price: 400 },
-              { stepName: 'Final Micro Inspection', price: 100 }
-            ],
-            totalCost: 1770,
-            quotedAt: new Date().toISOString().split('T')[0],
-            quotedBy: 'Sarah Quoter'
-          },
-          createdAt: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ];
-      for (const job of defaultJobs) {
-        await setDoc(doc(db, 'jobs', job.id), job);
-      }
-    }
-
+    // 4. Ensure sample jobs are NOT auto-seeded and clear any default sample jobs
+    // All captured jobs have been cleared as per user request.
+    
     // Seed Stores Data if empty
     await seedStoresDataIfEmpty();
   } catch (error) {

@@ -27,17 +27,13 @@ interface ReceivingViewProps {
 interface TempJobItem {
   componentType: string;
   modelName: string;
-  serialNumber: string;
+  serialNumber: string; // Part Number
   files: JobFile[];
   orderNumber?: string;
   yourRef?: string;
   customerJobNumber?: string;
   dueDate?: string;
   workshopArea?: string;
-  assignedTechnician?: string;
-  scheduledDate?: string;
-  requiredParts?: string;
-  instructions?: string;
 }
 
 export default function ReceivingView({
@@ -55,6 +51,17 @@ export default function ReceivingView({
   const [deliveryFiles, setDeliveryFiles] = useState<JobFile[]>([]);
   const [customFieldValues, setCustomFieldValues] = useState<{ [colId: string]: string }>({});
 
+  const getDefaultDueDate = (fromDateStr?: string) => {
+    const base = fromDateStr ? new Date(fromDateStr) : new Date();
+    if (isNaN(base.getTime())) {
+      const fallback = new Date();
+      fallback.setMonth(fallback.getMonth() + 1);
+      return fallback.toISOString().split('T')[0];
+    }
+    base.setMonth(base.getMonth() + 1);
+    return base.toISOString().split('T')[0];
+  };
+
   // Modular jobs inside this delivery
   const [jobItems, setJobItems] = useState<TempJobItem[]>([
     { 
@@ -65,12 +72,8 @@ export default function ReceivingView({
       orderNumber: '',
       yourRef: 'NONE',
       customerJobNumber: 'NONE',
-      dueDate: '31 Dec 2025',
-      workshopArea: '9B',
-      assignedTechnician: '',
-      scheduledDate: new Date().toISOString().split('T')[0],
-      requiredParts: '',
-      instructions: 'Perform standard workshop repair procedures in accordance with OEM parameters.'
+      dueDate: getDefaultDueDate(new Date().toISOString().split('T')[0]),
+      workshopArea: '9B'
     }
   ]);
 
@@ -144,12 +147,8 @@ export default function ReceivingView({
         orderNumber: '',
         yourRef: 'NONE',
         customerJobNumber: 'NONE',
-        dueDate: '31 Dec 2025',
-        workshopArea: '9B',
-        assignedTechnician: '',
-        scheduledDate: new Date().toISOString().split('T')[0],
-        requiredParts: '',
-        instructions: 'Perform standard workshop repair procedures in accordance with OEM parameters.'
+        dueDate: getDefaultDueDate(dateReceived),
+        workshopArea: '9B'
       }
     ]);
   };
@@ -182,13 +181,6 @@ export default function ReceivingView({
     }
     if (!deliveryNoteNumber.trim()) {
       alert("Please enter a Delivery Note number.");
-      return;
-    }
-
-    // Validate that all serial numbers are entered
-    const emptySerials = jobItems.filter(item => !item.serialNumber.trim());
-    if (emptySerials.length > 0) {
-      alert("Please enter a serial number for all components in this delivery.");
       return;
     }
 
@@ -232,12 +224,8 @@ export default function ReceivingView({
             orderNumber: item.orderNumber || '',
             yourRef: item.yourRef || 'NONE',
             customerJobNumber: item.customerJobNumber || 'NONE',
-            dueDate: item.dueDate || '31 Dec 2025',
-            workshopArea: item.workshopArea || '9B',
-            assignedTechnician: item.assignedTechnician || '',
-            scheduledDate: item.scheduledDate || new Date().toISOString().split('T')[0],
-            requiredParts: item.requiredParts || '',
-            instructions: item.instructions || 'Perform standard workshop repair procedures in accordance with OEM parameters.'
+            dueDate: item.dueDate || getDefaultDueDate(dateReceived),
+            workshopArea: item.workshopArea || '9B'
           },
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
@@ -259,12 +247,8 @@ export default function ReceivingView({
         orderNumber: '',
         yourRef: 'NONE',
         customerJobNumber: 'NONE',
-        dueDate: '31 Dec 2025',
-        workshopArea: '9B',
-        assignedTechnician: '',
-        scheduledDate: new Date().toISOString().split('T')[0],
-        requiredParts: '',
-        instructions: 'Perform standard workshop repair procedures in accordance with OEM parameters.'
+        dueDate: getDefaultDueDate(new Date().toISOString().split('T')[0]),
+        workshopArea: '9B'
       }]);
 
       setSuccessMsg(`Successfully registered ${jobsToSave.length} jobs under Delivery Note ${deliveryNoteNumber}!`);
@@ -347,7 +331,7 @@ export default function ReceivingView({
                 </div>
 
                 {/* Dynamic Columns Custom Fields */}
-                {customColumns.map(col => (
+                {customColumns.filter(col => col.id !== 'damage_severity' && col.label !== 'Damage Severity Level').map(col => (
                   <div key={col.id}>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">{col.label}</label>
                     <input
@@ -378,7 +362,11 @@ export default function ReceivingView({
 
               <div className="space-y-4">
                 {jobItems.map((item, idx) => {
-                  const availableModels = componentsList.find(c => c.id === item.componentType)?.models || [];
+                  const availableModels = (
+                    componentsList.find(c => c.id === item.componentType || c.name === item.componentType) ||
+                    componentsList.find(c => c.id.toLowerCase().replace(/\s+/g, '') === item.componentType?.toLowerCase().replace(/\s+/g, '')) ||
+                    componentsList[0]
+                  )?.models || [];
 
                   return (
                     <div key={idx} className="p-5 bg-slate-50/30 rounded-2xl border border-slate-200 space-y-4 relative pb-14">
@@ -429,13 +417,12 @@ export default function ReceivingView({
                           </select>
                         </div>
 
-                        {/* Serial Number */}
+                        {/* Part Number */}
                         <div>
-                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Serial Number *</label>
+                          <label className="block text-xs font-semibold text-slate-600 mb-1.5">Part Number</label>
                           <input
                             type="text"
-                            required
-                            placeholder="e.g. SN-552A"
+                            placeholder="e.g. PN-552A (Optional)"
                             value={item.serialNumber}
                             onChange={(e) => updateJobItem(idx, 'serialNumber', e.target.value)}
                             className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-hidden focus:border-blue-500"
@@ -449,7 +436,7 @@ export default function ReceivingView({
                           Workshop Job Card Config (Optional)
                         </h4>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                           {/* Order Number */}
                           <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 text-left">Order Number</label>
@@ -498,63 +485,16 @@ export default function ReceivingView({
                             />
                           </div>
 
-                          {/* Due Date */}
+                          {/* Due Date (Defaults to 1 month from receive date) */}
                           <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 text-left">Due Date</label>
                             <input
-                              type="text"
-                              placeholder="e.g. 31 Dec 2025"
-                              value={item.dueDate || '31 Dec 2025'}
-                              onChange={(e) => updateJobItem(idx, 'dueDate', e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden focus:border-blue-500 font-semibold"
-                            />
-                          </div>
-
-                          {/* Assigned Tech */}
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 text-left">Lead Technician</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. Marc Artisan"
-                              value={item.assignedTechnician || ''}
-                              onChange={(e) => updateJobItem(idx, 'assignedTechnician', e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden focus:border-blue-500 font-medium"
-                            />
-                          </div>
-
-                          {/* Scheduled Date */}
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 text-left">Scheduled Start</label>
-                            <input
                               type="date"
-                              value={item.scheduledDate || new Date().toISOString().split('T')[0]}
-                              onChange={(e) => updateJobItem(idx, 'scheduledDate', e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden focus:border-blue-500 font-semibold"
+                              value={item.dueDate || getDefaultDueDate(dateReceived)}
+                              onChange={(e) => updateJobItem(idx, 'dueDate', e.target.value)}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden focus:border-blue-500 font-semibold text-slate-800"
                             />
                           </div>
-
-                          {/* Required Parts */}
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 text-left">Required Parts</label>
-                            <input
-                              type="text"
-                              placeholder="e.g. 2x Bearing Cups"
-                              value={item.requiredParts || ''}
-                              onChange={(e) => updateJobItem(idx, 'requiredParts', e.target.value)}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden focus:border-blue-500 font-medium"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Special Technical Instructions */}
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 text-left">Special Technical Instructions</label>
-                          <textarea
-                            rows={2}
-                            value={item.instructions || ''}
-                            onChange={(e) => updateJobItem(idx, 'instructions', e.target.value)}
-                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden focus:border-blue-500 font-mono text-slate-600"
-                          />
                         </div>
                       </div>
 
