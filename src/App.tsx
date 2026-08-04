@@ -496,7 +496,7 @@ export default function App() {
       </aside>
 
       {/* MAIN ERP WORKPLACE AREA */}
-      <main className="flex-1 p-3 sm:p-5 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full h-full">
+      <main className="flex-1 p-3 sm:p-5 lg:p-8 overflow-y-auto w-full h-full">
         {dataLoading && (
           <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 py-1.5 px-4 rounded-full w-fit flex items-center gap-2 mb-4">
             <RefreshCw className="w-3.5 h-3.5 animate-spin" />

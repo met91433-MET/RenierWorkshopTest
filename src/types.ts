@@ -160,10 +160,29 @@ export interface JobQuoteStep {
 }
 
 export interface JobPreQuote {
+  preQuoteId?: string;
   steps?: JobQuoteStep[];
   totalCost?: number;
   quotedAt?: string;
   quotedBy?: string;
+}
+
+export function getPreQuoteId(job: Job, allJobs?: Job[]): string {
+  if (job.preQuoteDetails?.preQuoteId) {
+    return job.preQuoteDetails.preQuoteId;
+  }
+  if (allJobs && Array.isArray(allJobs)) {
+    const preQuotedJobs = allJobs
+      .filter(j => j.status === 'PreQuoted' || Boolean(j.preQuoteDetails?.steps && j.preQuoteDetails.steps.length > 0))
+      .sort((a, b) => (a.createdAt || a.id).localeCompare(b.createdAt || b.id));
+    const idx = preQuotedJobs.findIndex(j => j.id === job.id);
+    if (idx >= 0) {
+      return `PQ${String(idx + 1).padStart(5, '0')}`;
+    }
+  }
+  const digits = job.id.replace(/\D/g, '');
+  const num = digits ? parseInt(digits, 10) : 1;
+  return `PQ${String(num).padStart(5, '0')}`;
 }
 
 export interface JobCardDetails {
