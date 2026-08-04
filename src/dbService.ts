@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { Customer, Machine, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, ToolStockItem, ConsumableItem, ConsumableAllocationLog } from './types';
-import { sanitizeJobForFirestoreAsync } from './utils/imageCompressor';
+import { sanitizeJobForFirestoreAsync, compressDataUrl } from './utils/imageCompressor';
 
 export enum OperationType {
   CREATE = 'create',
@@ -90,13 +90,15 @@ export async function saveCustomColumns(columns: CustomColumn[]): Promise<void> 
   await setDoc(doc(db, 'config', CONFIG_DOC_ID), { customColumns: columns });
 }
 
+const FORMAT_STORAGE_KEY = 'job_card_format_config_v1';
+
 export async function getJobCardFormatConfig(): Promise<JobCardFormatConfig> {
   try {
     const formatDoc = await getDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID));
     if (formatDoc.exists()) {
       const data = formatDoc.data() as JobCardFormatConfig;
       // Merge with default format in case new fields/sections were added
-      return {
+      const merged: JobCardFormatConfig = {
         ...DEFAULT_JOB_CARD_FORMAT,
         ...data,
         labels: {
@@ -105,21 +107,81 @@ export async function getJobCardFormatConfig(): Promise<JobCardFormatConfig> {
         },
         sections: data.sections && data.sections.length > 0 ? data.sections : DEFAULT_JOB_CARD_FORMAT.sections
       };
+      try {
+        localStorage.setItem(FORMAT_STORAGE_KEY, JSON.stringify(merged));
+      } catch (e) {
+        // ignore localStorage write errors
+      }
+      return merged;
     }
+
+    // Check local cache if Firestore doc doesn't exist
+    const cached = localStorage.getItem(FORMAT_STORAGE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached) as JobCardFormatConfig;
+      const merged: JobCardFormatConfig = {
+        ...DEFAULT_JOB_CARD_FORMAT,
+        ...parsed,
+        labels: {
+          ...DEFAULT_JOB_CARD_FORMAT.labels,
+          ...(parsed.labels || {})
+        },
+        sections: parsed.sections && parsed.sections.length > 0 ? parsed.sections : DEFAULT_JOB_CARD_FORMAT.sections
+      };
+      await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), merged);
+      return merged;
+    }
+
     // Seed default format if empty
     await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), DEFAULT_JOB_CARD_FORMAT);
     return DEFAULT_JOB_CARD_FORMAT;
   } catch (error) {
     console.error("Error fetching Job Card format config:", error);
+    try {
+      const cached = localStorage.getItem(FORMAT_STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as JobCardFormatConfig;
+        return {
+          ...DEFAULT_JOB_CARD_FORMAT,
+          ...parsed,
+          labels: {
+            ...DEFAULT_JOB_CARD_FORMAT.labels,
+            ...(parsed.labels || {})
+          },
+          sections: parsed.sections && parsed.sections.length > 0 ? parsed.sections : DEFAULT_JOB_CARD_FORMAT.sections
+        };
+      }
+    } catch (e) {
+      // ignore
+    }
     return DEFAULT_JOB_CARD_FORMAT;
   }
 }
 
 export async function saveJobCardFormatConfig(config: JobCardFormatConfig): Promise<void> {
-  await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), {
-    ...config,
-    updatedAt: new Date().toISOString()
-  });
+  let configToSave = { ...config };
+  if (configToSave.logoUrl && configToSave.logoUrl.startsWith('data:image')) {
+    try {
+      configToSave.logoUrl = await compressDataUrl(configToSave.logoUrl, 400, 0.8);
+    } catch (e) {
+      console.error("Error compressing format logoUrl:", e);
+    }
+  }
+
+  try {
+    localStorage.setItem(FORMAT_STORAGE_KEY, JSON.stringify(configToSave));
+  } catch (e) {
+    console.error("Error writing format config to localStorage:", e);
+  }
+  try {
+    await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), {
+      ...configToSave,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Error saving Job Card format config to Firestore:", error);
+    handleFirestoreError(error, OperationType.WRITE, `config/${JOB_CARD_FORMAT_DOC_ID}`);
+  }
 }
 
 

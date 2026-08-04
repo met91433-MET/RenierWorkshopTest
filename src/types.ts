@@ -301,7 +301,7 @@ export const DEFAULT_JOB_CARD_FORMAT: JobCardFormatConfig = {
   showSabsBadge: true,
   showIsoBadge: true,
   showAreaBadge: true,
-  showHardStampBox: true,
+  showHardStampBox: false,
   showConsumablesTable: true,
   showOutsourcingTable: true,
   showApprovalSignature: true,

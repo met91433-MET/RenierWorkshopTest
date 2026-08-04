@@ -17,6 +17,7 @@ import {
 import JobCardDocument from './JobCardDocument';
 import MachineCardDocument from './MachineCardDocument';
 import CameraCaptureModal from './CameraCaptureModal';
+import { compressFile } from '../utils/imageCompressor';
 import { 
   Shield, 
   UserPlus, 
@@ -880,15 +881,21 @@ export default function AdminCenterView({
     }
   }, [jobCardFormat]);
 
-  const processLogoFile = (file: File) => {
+  const processLogoFile = async (file: File) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      if (evt.target?.result) {
-        setFormatConfig(prev => ({ ...prev, logoUrl: evt.target!.result as string }));
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const { dataUrl } = await compressFile(file, 400, 0.8);
+      setFormatConfig(prev => ({ ...prev, logoUrl: dataUrl }));
+    } catch (e) {
+      console.error("Error compressing logo file:", e);
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        if (evt.target?.result) {
+          setFormatConfig(prev => ({ ...prev, logoUrl: evt.target!.result as string }));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleLogoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -960,8 +967,15 @@ export default function AdminCenterView({
     }
   };
 
-  const handleResetFormat = () => {
-    setFormatConfig(DEFAULT_JOB_CARD_FORMAT);
+  const handleResetFormat = async () => {
+    if (window.confirm("Reset Job Card format configuration to original defaults?")) {
+      setFormatConfig(DEFAULT_JOB_CARD_FORMAT);
+      if (onSaveJobCardFormat) {
+        await onSaveJobCardFormat(DEFAULT_JOB_CARD_FORMAT);
+        setFormatSuccessMsg(true);
+        setTimeout(() => setFormatSuccessMsg(false), 3000);
+      }
+    }
   };
 
   return (
@@ -2365,14 +2379,14 @@ export default function AdminCenterView({
                         previewPage === 'page2' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                       }`}
                     >
-                      Page 2 (Timesheet Log)
+                      Page 2
                     </button>
                   </div>
                 </div>
 
-                {/* Simulated A4 Portrait Job Card Document */}
+                {/* Simulated A4 Job Card Document */}
                 <div className="p-4 bg-slate-200/80 overflow-y-auto max-h-[780px] flex justify-center">
-                  <div className="w-full max-w-[580px]">
+                  <div className={`w-full transition-all duration-300 ${previewPage === 'page2' ? 'max-w-[760px]' : 'max-w-[580px]'}`}>
                     <JobCardDocument format={formatConfig} page={previewPage} />
                   </div>
                 </div>

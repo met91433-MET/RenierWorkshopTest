@@ -81,7 +81,17 @@ export default function App() {
   const [componentsList, setComponentsList] = useState<ComponentMatrix[]>([]);
   const [customColumns, setCustomColumns] = useState<CustomColumn[]>([]);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
-  const [jobCardFormat, setJobCardFormat] = useState<JobCardFormatConfig>(DEFAULT_JOB_CARD_FORMAT);
+  const [jobCardFormat, setJobCardFormat] = useState<JobCardFormatConfig>(() => {
+    try {
+      const saved = localStorage.getItem('job_card_format_config_v1');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error("Error loading cached job card format:", e);
+    }
+    return DEFAULT_JOB_CARD_FORMAT;
+  });
 
   // Navigation & Toggle State
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -159,7 +169,7 @@ export default function App() {
     setDataLoading(true);
     try {
       // Perform initial purge if required by user
-      const PURGE_KEY = 'mes_jobs_purged_v3';
+      const PURGE_KEY = 'mes_jobs_purged_v4';
       if (!localStorage.getItem(PURGE_KEY)) {
         await deleteAllJobs();
         localStorage.setItem(PURGE_KEY, 'true');
@@ -297,6 +307,7 @@ export default function App() {
   };
 
   const handleSaveJobCardFormat = async (config: JobCardFormatConfig) => {
+    setJobCardFormat(config);
     await saveJobCardFormatConfig(config);
     await loadAllERPData();
   };
@@ -578,6 +589,7 @@ export default function App() {
               <JobEnquiriesView 
                 jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
                 customColumns={customColumns}
+                componentsList={componentsList}
                 onUpdateJob={handleUpdateJob}
                 onDeleteJob={handleDeleteJob}
                 onDeleteAllJobs={handleDeleteAllJobs}

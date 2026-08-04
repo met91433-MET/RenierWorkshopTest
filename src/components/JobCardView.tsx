@@ -437,8 +437,8 @@ export default function JobCardView({
                 {/* Page 2 Preview Block */}
                 {(activePreviewTab === 'page2' || activePreviewTab === 'all') && (
                   <div className="w-full bg-slate-100 p-4 rounded-2xl shadow-inner border border-slate-200 flex flex-col items-center">
-                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">A4 Portrait Sheet — Page 2 (Timesheet &amp; Operations Log)</div>
-                    <div className="w-full max-w-[580px] bg-white shadow-xl border border-slate-300">
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">A4 Landscape Sheet — Page 2</div>
+                    <div className="w-full max-w-[760px] bg-white shadow-xl border border-slate-300">
                       <JobCardDocument
                         format={format}
                         page="page2"
@@ -473,6 +473,7 @@ export default function JobCardView({
               format={format}
               page="page1"
               job={selectedJob}
+              isPrint={true}
               overrideFields={{
                 jobCardNumber: selectedJob.jobCardDetails?.jobCardNumber || generateNextJobCardNumber(jobs),
                 assignedTechnician,
@@ -487,11 +488,12 @@ export default function JobCardView({
               }}
             />
           </div>
-          <div className="print-page flex flex-col font-sans text-black bg-white">
+          <div className="print-page-landscape flex flex-col font-sans text-black bg-white">
             <JobCardDocument
               format={format}
               page="page2"
               job={selectedJob}
+              isPrint={true}
               overrideFields={{
                 jobCardNumber: selectedJob.jobCardDetails?.jobCardNumber || generateNextJobCardNumber(jobs),
                 assignedTechnician,

@@ -59,11 +59,20 @@ export function openInNewWindow({ elementId = 'printable-jobcard-doc', documentT
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+          @page {
+            size: portrait;
+            margin: 0;
+          }
+          @page landscape-page {
+            size: landscape;
+            margin: 0;
+          }
           @media print {
-            body {
+            html, body {
               background-color: #ffffff !important;
               padding: 0 !important;
               margin: 0 !important;
+              width: 100% !important;
             }
             .no-print {
               display: none !important;
@@ -73,7 +82,25 @@ export function openInNewWindow({ elementId = 'printable-jobcard-doc', documentT
               box-shadow: none !important;
               border-radius: 0 !important;
               margin: 0 !important;
+              padding: 0 !important;
               width: 100% !important;
+            }
+            .print-page {
+              width: 210mm !important;
+              height: 297mm !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              page-break-after: always;
+              break-after: page;
+            }
+            .print-page-landscape {
+              width: 297mm !important;
+              height: 210mm !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              page-break-after: avoid;
+              break-after: page;
+              page: landscape-page;
             }
             .page-break {
               page-break-after: always;

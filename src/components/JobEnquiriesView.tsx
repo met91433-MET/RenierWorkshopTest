@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Job, JobFile, CustomColumn, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog } from '../types';
+import { Job, JobFile, CustomColumn, ComponentMatrix, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog } from '../types';
 import { getConsumableAllocationLogs } from '../dbService';
 import { compressFile } from '../utils/imageCompressor';
 import JobCardDocument from './JobCardDocument';
@@ -46,6 +46,7 @@ import {
 interface JobEnquiriesViewProps {
   jobs: Job[];
   customColumns: CustomColumn[];
+  componentsList?: ComponentMatrix[];
   onUpdateJob: (job: Job) => Promise<void>;
   onDeleteJob?: (id: string) => Promise<void>;
   onDeleteAllJobs?: () => Promise<void>;
@@ -56,6 +57,7 @@ interface JobEnquiriesViewProps {
 export default function JobEnquiriesView({
   jobs,
   customColumns,
+  componentsList = [],
   onUpdateJob,
   onDeleteJob,
   onDeleteAllJobs,
@@ -1650,8 +1652,8 @@ export default function JobEnquiriesView({
 
                     {/* Page 2 */}
                     <div className="w-full bg-slate-200/80 p-4 rounded-2xl shadow-inner border border-slate-300 flex flex-col items-center">
-                      <div className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">A4 Portrait Sheet — Page 2 (Timesheet &amp; Machining Log)</div>
-                      <div className="w-full max-w-[560px] bg-white shadow-xl border border-slate-300">
+                      <div className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">A4 Landscape Sheet — Page 2</div>
+                      <div className="w-full max-w-[760px] bg-white shadow-xl border border-slate-300">
                         <JobCardDocument
                           format={format}
                           page="page2"
@@ -1690,21 +1692,64 @@ export default function JobEnquiriesView({
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Component Type</label>
-                      <input
-                        type="text"
-                        value={editComponentType}
-                        onChange={(e) => setEditComponentType(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
+                      {componentsList.length > 0 ? (
+                        <select
+                          value={editComponentType}
+                          onChange={(e) => {
+                            const newType = e.target.value;
+                            setEditComponentType(newType);
+                            const matched = componentsList.find(c => c.id === newType || c.name === newType);
+                            if (matched && matched.models && matched.models.length > 0) {
+                              setEditModelName(matched.models[0]);
+                            }
+                          }}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
+                        >
+                          {componentsList.map(comp => (
+                            <option key={comp.id} value={comp.id || comp.name}>{comp.name || comp.id}</option>
+                          ))}
+                          {!componentsList.some(c => c.id === editComponentType || c.name === editComponentType) && editComponentType && (
+                            <option value={editComponentType}>{editComponentType}</option>
+                          )}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={editComponentType}
+                          onChange={(e) => setEditComponentType(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
+                        />
+                      )}
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Model Name</label>
-                      <input
-                        type="text"
-                        value={editModelName}
-                        onChange={(e) => setEditModelName(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
+                      {(() => {
+                        const matched = componentsList.find(c => c.id === editComponentType || c.name === editComponentType);
+                        if (matched && matched.models && matched.models.length > 0) {
+                          return (
+                            <select
+                              value={editModelName}
+                              onChange={(e) => setEditModelName(e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
+                            >
+                              {matched.models.map((m, mIdx) => (
+                                <option key={`${m}-${mIdx}`} value={m}>{m}</option>
+                              ))}
+                              {!matched.models.includes(editModelName) && editModelName && (
+                                <option value={editModelName}>{editModelName}</option>
+                              )}
+                            </select>
+                          );
+                        }
+                        return (
+                          <input
+                            type="text"
+                            value={editModelName}
+                            onChange={(e) => setEditModelName(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
+                          />
+                        );
+                      })()}
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Part Number</label>
@@ -2181,6 +2226,7 @@ export default function JobEnquiriesView({
               format={format}
               page="page1"
               job={selectedJob}
+              isPrint={true}
               overrideFields={{
                 jobCardNumber: selectedJob.jobCardDetails?.jobCardNumber,
                 assignedTechnician: selectedJob.jobCardDetails?.assignedTechnician,
@@ -2194,11 +2240,12 @@ export default function JobEnquiriesView({
               }}
             />
           </div>
-          <div className="print-page flex flex-col font-sans text-black bg-white">
+          <div className="print-page-landscape flex flex-col font-sans text-black bg-white">
             <JobCardDocument
               format={format}
               page="page2"
               job={selectedJob}
+              isPrint={true}
               overrideFields={{
                 jobCardNumber: selectedJob.jobCardDetails?.jobCardNumber,
                 assignedTechnician: selectedJob.jobCardDetails?.assignedTechnician,

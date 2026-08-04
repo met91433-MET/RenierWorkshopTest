@@ -63,10 +63,13 @@ export default function ReceivingView({
   };
 
   // Modular jobs inside this delivery
-  const [jobItems, setJobItems] = useState<TempJobItem[]>([
-    { 
-      componentType: 'Spindle', 
-      modelName: '777 Rear', 
+  const [jobItems, setJobItems] = useState<TempJobItem[]>(() => {
+    const defaultType = componentsList[0]?.id || componentsList[0]?.name || 'Spindle';
+    const firstComp = componentsList.find(c => c.id === defaultType || c.name === defaultType) || componentsList[0];
+    const defaultModel = firstComp?.models[0] || '';
+    return [{ 
+      componentType: defaultType, 
+      modelName: defaultModel, 
       serialNumber: '', 
       files: [],
       orderNumber: '',
@@ -74,8 +77,26 @@ export default function ReceivingView({
       customerJobNumber: 'NONE',
       dueDate: getDefaultDueDate(new Date().toISOString().split('T')[0]),
       workshopArea: '9B'
+    }];
+  });
+
+  // Sync componentType with componentsList when component matrices load or update
+  React.useEffect(() => {
+    if (componentsList && componentsList.length > 0) {
+      setJobItems(prev => prev.map(item => {
+        const matched = componentsList.find(c => c.id === item.componentType || c.name === item.componentType);
+        if (!matched) {
+          const firstComp = componentsList[0];
+          return {
+            ...item,
+            componentType: firstComp.id || firstComp.name,
+            modelName: firstComp.models[0] || ''
+          };
+        }
+        return item;
+      }));
     }
-  ]);
+  }, [componentsList]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
@@ -132,9 +153,8 @@ export default function ReceivingView({
   };
 
   const addJobItem = () => {
-    // Select default model for Spindle if available, else first in list
-    const defaultType = componentsList[0]?.id || 'Spindle';
-    const firstComp = componentsList.find(c => c.id === defaultType);
+    const defaultType = componentsList[0]?.id || componentsList[0]?.name || 'Spindle';
+    const firstComp = componentsList.find(c => c.id === defaultType || c.name === defaultType) || componentsList[0];
     const defaultModel = firstComp?.models[0] || '';
 
     setJobItems(prev => [
@@ -164,7 +184,7 @@ export default function ReceivingView({
       if (field === 'componentType') {
         updated[idx].componentType = value;
         // Reset model select to first model of this selected component
-        const comp = componentsList.find(c => c.id === value);
+        const comp = componentsList.find(c => c.id === value || c.name === value);
         updated[idx].modelName = comp?.models[0] || '';
       } else {
         (updated[idx] as any)[field] = value;
@@ -239,9 +259,11 @@ export default function ReceivingView({
       setDeliveryNoteNumber('');
       setDeliveryFiles([]);
       setCustomFieldValues({});
+      const resetType = componentsList[0]?.id || componentsList[0]?.name || 'Spindle';
+      const resetComp = componentsList.find(c => c.id === resetType || c.name === resetType) || componentsList[0];
       setJobItems([{ 
-        componentType: componentsList[0]?.id || 'Spindle', 
-        modelName: componentsList[0]?.models[0] || '', 
+        componentType: resetType, 
+        modelName: resetComp?.models[0] || '', 
         serialNumber: '', 
         files: [],
         orderNumber: '',

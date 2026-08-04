@@ -29,6 +29,9 @@ export default function JobCardDocument({
   overrideFields
 }: JobCardDocumentProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
+  const isLandscape = page === 'page2';
+  const targetWidth = isLandscape ? 1123 : 794;
+  const targetHeight = isLandscape ? 794 : 1123;
   const [scale, setScale] = React.useState<number>(0.65);
 
   React.useEffect(() => {
@@ -39,7 +42,7 @@ export default function JobCardDocument({
     const updateScale = () => {
       const width = el.clientWidth;
       if (width > 0) {
-        setScale(width / 794);
+        setScale(width / targetWidth);
       }
     };
 
@@ -49,7 +52,7 @@ export default function JobCardDocument({
     ro.observe(el);
 
     return () => ro.disconnect();
-  }, [isPrint]);
+  }, [isPrint, targetWidth]);
 
   // Sample fallback data for editor preview
   const jobData = {
@@ -144,8 +147,8 @@ export default function JobCardDocument({
               </tr>
             </thead>
             <tbody className="flex-1 flex flex-col divide-y divide-black/30">
-              {Array.from({ length: 18 }).map((_, i) => (
-                <tr key={i} className="flex-1 flex divide-x divide-black/30 min-h-[30px]">
+              {Array.from({ length: 15 }).map((_, i) => (
+                <tr key={i} className="flex-1 flex divide-x divide-black/30 min-h-[26px]">
                   <td className="w-[8%]"></td>
                   <td className="w-[24%]"></td>
                   <td className="w-[8%]"></td>
@@ -291,7 +294,7 @@ export default function JobCardDocument({
 
       {/* SECTION 4: WORKSHOP PROCEDURE / INSTRUCTIONS BOX */}
       {format.sections.find(s => s.id === 'work_instructions')?.enabled !== false && (
-        <div className={`border-x-2 border-b-2 border-black p-4 bg-white flex-1 flex flex-col justify-between min-h-[220px] relative overflow-hidden`}>
+        <div className={`border-x-2 border-b-2 border-black p-4 bg-white flex-1 flex flex-col justify-between min-h-[280px] relative overflow-hidden`}>
           <div>
             <div className="flex justify-between items-start mb-3">
               <h3 className="text-[14px] font-extrabold text-slate-600 tracking-wider uppercase">
@@ -352,7 +355,7 @@ export default function JobCardDocument({
         </div>
       )}
 
-      {/* SECTION 5: TABLES GRID (CONSUMABLES, OUTSOURCING & HARD STAMP) */}
+      {/* SECTION 5: TABLES GRID (CONSUMABLES & OUTSOURCING) */}
       {format.sections.find(s => s.id === 'tables_grid')?.enabled !== false && (
         <div className={`grid grid-cols-2 border-x-2 border-b-2 border-black bg-white`}>
           {/* Left Column: Consumables Table */}
@@ -371,7 +374,7 @@ export default function JobCardDocument({
                   </tr>
                 </thead>
                 <tbody>
-                  {Array.from({ length: 8 }).map((_, i) => (
+                  {Array.from({ length: 4 }).map((_, i) => (
                     <tr key={i} className="h-5 border-b border-black/20">
                       <td className="border-r border-black/20"></td>
                       <td className="border-r border-black/20"></td>
@@ -384,7 +387,7 @@ export default function JobCardDocument({
             </div>
           )}
 
-          {/* Right Column: Consumables #2 + Outsourcing + Hard Stamp Box */}
+          {/* Right Column: Consumables #2 + Outsourcing */}
           <div className="flex flex-col justify-between">
             <div>
               {/* Consumables #2 */}
@@ -403,7 +406,7 @@ export default function JobCardDocument({
                       </tr>
                     </thead>
                     <tbody>
-                      {Array.from({ length: 3 }).map((_, i) => (
+                      {Array.from({ length: 2 }).map((_, i) => (
                         <tr key={i} className="h-5 border-b border-black/20">
                           <td className="border-r border-black/20"></td>
                           <td className="border-r border-black/20"></td>
@@ -432,7 +435,7 @@ export default function JobCardDocument({
                       </tr>
                     </thead>
                     <tbody>
-                      {Array.from({ length: 3 }).map((_, i) => (
+                      {Array.from({ length: 2 }).map((_, i) => (
                         <tr key={i} className="h-5 border-b border-black/20">
                           <td className="border-r border-black/20"></td>
                           <td className="border-r border-black/20"></td>
@@ -445,18 +448,6 @@ export default function JobCardDocument({
                 </div>
               )}
             </div>
-
-            {/* Hard Stamp Date Box */}
-            {format.showHardStampBox && (
-              <div className="p-1.5 flex justify-end items-center bg-slate-50/50 mt-1">
-                <div className="border-2 rounded-lg p-1.5 text-center min-w-[120px] bg-white flex flex-col leading-none shadow-xs" style={{ borderColor: stampBoxBorderColor }}>
-                  <span className="text-[11px] font-bold uppercase tracking-tight block" style={{ color: stampBoxBorderColor }}>
-                    {format.labels.hardStampDate || "HARD STAMP DATE"}
-                  </span>
-                  <div className="h-8 mt-1"></div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -471,11 +462,11 @@ export default function JobCardDocument({
   const documentContent = (
     <div
       style={{
-        width: '794px',
-        height: '1123px',
+        width: isPrint ? (isLandscape ? '297mm' : '210mm') : `${targetWidth}px`,
+        height: isPrint ? (isLandscape ? '210mm' : '297mm') : `${targetHeight}px`,
         boxSizing: 'border-box'
       }}
-      className={`bg-white ${borderClass} border-black p-5 text-black font-sans relative flex flex-col justify-between shadow-xs overflow-hidden shrink-0`}
+      className={`bg-white ${borderClass} border-black p-4 md:p-5 text-black font-sans relative flex flex-col justify-between shadow-xs overflow-hidden shrink-0 w-full h-full`}
     >
       {page === 'page2' ? renderPage2Content() : renderPage1Content()}
     </div>
@@ -489,12 +480,12 @@ export default function JobCardDocument({
     <div
       ref={containerRef}
       className="w-full relative flex justify-center items-start overflow-hidden"
-      style={{ height: `${1123 * scale}px` }}
+      style={{ height: `${targetHeight * scale}px` }}
     >
       <div
         style={{
-          width: '794px',
-          height: '1123px',
+          width: `${targetWidth}px`,
+          height: `${targetHeight}px`,
           transform: `scale(${scale})`,
           transformOrigin: 'top center',
           boxSizing: 'border-box'
