@@ -47,8 +47,30 @@ export default function DashboardView({
   onSelectJob,
   onNavigateToStores
 }: DashboardViewProps) {
+  // Check permission access for each dashboard mode on the slider
+  const canAccessIncoming = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canReceive);
+  const canAccessJobCards = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canCreateJobCard);
+  const canAccessPreQuote = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canQuote);
+  const canAccessStores = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canStores);
+
+  const allowedModes = useMemo(() => {
+    const modes: ('incoming' | 'jobcards' | 'prequote' | 'stores')[] = [];
+    if (canAccessIncoming) modes.push('incoming');
+    if (canAccessJobCards) modes.push('jobcards');
+    if (canAccessPreQuote) modes.push('prequote');
+    if (canAccessStores) modes.push('stores');
+    return modes.length > 0 ? modes : ['incoming'];
+  }, [canAccessIncoming, canAccessJobCards, canAccessPreQuote, canAccessStores]);
+
   // Mode Switcher: 'incoming' (View 1: Receiving Dashboard), 'jobcards' (View 2: Jobs Dashboard), 'prequote' (View 3: PreQuote Dashboard), 'stores' (View 4: Stores Dashboard)
-  const [activeDashboardMode, setActiveDashboardMode] = useState<'incoming' | 'jobcards' | 'prequote' | 'stores'>('incoming');
+  const [activeDashboardMode, setActiveDashboardMode] = useState<'incoming' | 'jobcards' | 'prequote' | 'stores'>(allowedModes[0]);
+
+  // Ensure active dashboard mode is always valid for the logged-in user's clearance
+  useEffect(() => {
+    if (!allowedModes.includes(activeDashboardMode)) {
+      setActiveDashboardMode(allowedModes[0]);
+    }
+  }, [allowedModes, activeDashboardMode]);
 
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -239,84 +261,87 @@ export default function DashboardView({
   return (
     <div className="space-y-6" id="dashboard-view-root">
       {/* Header Banner & View Switcher */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight font-display text-slate-800 flex items-center gap-2">
-            Welcome back, {currentUser?.displayName || currentUser?.email || 'Workshop Operator'}
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            MES Workshop3 — Real-time tracking for component intakes, pre-quotes, and active job cards.
-          </p>
-        </div>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-3 text-center">
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight font-display text-slate-800 flex items-center justify-center gap-2">
+          Dashboard
+        </h1>
 
         {/* TOP SEGMENTED VIEW SWITCHER */}
-        <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap items-center gap-1 shrink-0 self-start lg:self-auto">
+        <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-center gap-1 shrink-0">
           {/* View 1 Button: Receiving Dashboard */}
-          <button
-            onClick={() => handleSwitchMode('incoming')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeDashboardMode === 'incoming'
-                ? 'bg-amber-500 text-white shadow-xs ring-1 ring-amber-600/20'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <Inbox className="w-4 h-4" />
-            <span>Receiving Dashboard</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
-              activeDashboardMode === 'incoming' ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {incomingJobs.length}
-            </span>
-          </button>
+          {canAccessIncoming && (
+            <button
+              onClick={() => handleSwitchMode('incoming')}
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeDashboardMode === 'incoming'
+                  ? 'bg-amber-500 text-white shadow-xs ring-1 ring-amber-600/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <Inbox className="w-4 h-4" />
+              <span>Receiving Dashboard</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                activeDashboardMode === 'incoming' ? 'bg-amber-600 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {incomingJobs.length}
+              </span>
+            </button>
+          )}
 
           {/* View 2 Button: Jobs Dashboard */}
-          <button
-            onClick={() => handleSwitchMode('jobcards')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeDashboardMode === 'jobcards'
-                ? 'bg-slate-900 text-white shadow-xs ring-1 ring-slate-800/20'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <FileText className="w-4 h-4 text-emerald-400" />
-            <span>Jobs Dashboard</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
-              activeDashboardMode === 'jobcards' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {jobCardJobs.length}
-            </span>
-          </button>
+          {canAccessJobCards && (
+            <button
+              onClick={() => handleSwitchMode('jobcards')}
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeDashboardMode === 'jobcards'
+                  ? 'bg-slate-900 text-white shadow-xs ring-1 ring-slate-800/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <FileText className="w-4 h-4 text-emerald-400" />
+              <span>Jobs Dashboard</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                activeDashboardMode === 'jobcards' ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {jobCardJobs.length}
+              </span>
+            </button>
+          )}
 
           {/* View 3 Button: PreQuote Dashboard */}
-          <button
-            onClick={() => handleSwitchMode('prequote')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeDashboardMode === 'prequote'
-                ? 'bg-purple-600 text-white shadow-xs ring-1 ring-purple-700/20'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <Calculator className="w-4 h-4 text-purple-200" />
-            <span>PreQuote Dashboard</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
-              activeDashboardMode === 'prequote' ? 'bg-purple-800 text-white' : 'bg-slate-200 text-slate-700'
-            }`}>
-              {preQuoteJobs.length}
-            </span>
-          </button>
+          {canAccessPreQuote && (
+            <button
+              onClick={() => handleSwitchMode('prequote')}
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeDashboardMode === 'prequote'
+                  ? 'bg-purple-600 text-white shadow-xs ring-1 ring-purple-700/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <Calculator className="w-4 h-4 text-purple-200" />
+              <span>PreQuote Dashboard</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                activeDashboardMode === 'prequote' ? 'bg-purple-800 text-white' : 'bg-slate-200 text-slate-700'
+              }`}>
+                {preQuoteJobs.length}
+              </span>
+            </button>
+          )}
 
           {/* View 4 Button: Stores Dashboard */}
-          <button
-            onClick={() => handleSwitchMode('stores')}
-            className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeDashboardMode === 'stores'
-                ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-700/20'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
-            }`}
-          >
-            <Boxes className="w-4 h-4 text-blue-200" />
-            <span>Stores Dashboard</span>
-          </button>
+          {canAccessStores && (
+            <button
+              onClick={() => handleSwitchMode('stores')}
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeDashboardMode === 'stores'
+                  ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-700/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <Boxes className="w-4 h-4 text-blue-200" />
+              <span>Stores Dashboard</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -859,7 +884,7 @@ export default function DashboardView({
                           )}
                         </td>
 
-                        {/* Action Buttons: View, Print, Email */}
+                        {/* Action Buttons: View, Print */}
                         <td className="p-4 text-right pr-6">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
@@ -886,19 +911,6 @@ export default function DashboardView({
                             >
                               <Printer className="w-3.5 h-3.5 text-purple-600" />
                               <span>Print</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedPreQuoteGroupForDoc(group);
-                                setDocModalInitialMode('email');
-                              }}
-                              className="inline-flex items-center gap-1 font-bold text-blue-800 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-xl border border-blue-200 transition-all cursor-pointer shadow-2xs text-[11px]"
-                              title="Email Quotation via Microsoft Outlook"
-                            >
-                              <Mail className="w-3.5 h-3.5 text-blue-600" />
-                              <span>Email</span>
                             </button>
                           </div>
                         </td>

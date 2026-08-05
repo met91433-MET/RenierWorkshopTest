@@ -31,11 +31,16 @@ body {
   
   /* Show only the print area and its children */
   #printable-jobcard-doc,
-  #printable-jobcard-doc * {
+  #printable-jobcard-doc *,
+  #printable-prequote-doc,
+  #printable-prequote-doc *,
+  .print-active,
+  .print-active * {
     visibility: visible !important;
   }
   
   #printable-jobcard-doc,
+  #printable-prequote-doc,
   .print-active {
     display: block !important;
     position: absolute !important;

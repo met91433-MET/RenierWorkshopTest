@@ -1,22 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useRef } from 'react';
 import { 
   X, 
   Printer, 
-  Mail, 
-  FileText, 
-  Send, 
-  Copy, 
-  Check, 
-  ExternalLink,
-  Download,
-  Calculator,
-  Building2,
-  Calendar,
-  User,
-  CheckCircle2,
-  DollarSign
+  Calculator
 } from 'lucide-react';
-import { Job, getPreQuoteId } from '../types';
+import { Job } from '../types';
+import { openInNewWindow, triggerNativePrint } from '../utils/printDoc';
 
 export interface PreQuoteGroup {
   preQuoteId: string;
@@ -38,13 +27,8 @@ interface PreQuoteDocumentModalProps {
 
 export default function PreQuoteDocumentModal({
   group,
-  initialMode = 'view',
   onClose
 }: PreQuoteDocumentModalProps) {
-  const [recipientEmail, setRecipientEmail] = useState('');
-  const [activeTab, setActiveTab] = useState<'view' | 'print' | 'email'>(initialMode);
-  const [copied, setCopied] = useState(false);
-  const [emailSentNotice, setEmailSentNotice] = useState(false);
   const documentRef = useRef<HTMLDivElement>(null);
 
   // Helper currency formatter
@@ -56,102 +40,14 @@ export default function PreQuoteDocumentModal({
     ? group.deliveryNotes.join(', ') 
     : 'N/A';
 
-  // Email template content for Outlook
-  const emailSubject = `PreQuote ${group.preQuoteId} - Official Quotation from Metalogik Engineering`;
-  const emailBody = `Dear ${group.customerName},\n\nPlease find the details for your official repair estimation below:\n\n` +
-    `========================================\n` +
-    `PREQUOTE ID: ${group.preQuoteId}\n` +
-    `CUSTOMER: ${group.customerName}\n` +
-    `DELIVERY NOTE(S): ${deliveryNotesText}\n` +
-    `QUOTATION DATE: ${group.quotedAt || new Date().toISOString().split('T')[0]}\n` +
-    `ESTIMATOR: ${group.quotedBy}\n` +
-    `========================================\n\n` +
-    `COMPONENT BREAKDOWN:\n` +
-    group.jobs.map((job, idx) => {
-      const steps = job.preQuoteDetails?.steps || [];
-      const stepsText = steps.length > 0 
-        ? steps.map(s => `    - ${s.stepName}: ${formatCurrency(s.price)}`).join('\n')
-        : '    - Standard repair steps pending';
-      const jobCost = job.preQuoteDetails?.totalCost || 0;
-      return `${idx + 1}. ${job.componentType} (${job.modelName || 'Standard'}) [Job #${job.id}, S/N: ${job.serialNumber || 'N/A'}]\n` +
-             `   Delivery Note: ${job.deliveryNoteNumber || 'N/A'}\n` +
-             `${stepsText}\n` +
-             `   Component Subtotal: ${formatCurrency(jobCost)}\n`;
-    }).join('\n') +
-    `\n----------------------------------------\n` +
-    `GRAND TOTAL: ${formatCurrency(group.totalCost)}\n` +
-    `----------------------------------------\n\n` +
-    `Terms & Conditions:\n` +
-    `- Quotation is valid for 30 days from issue date.\n` +
-    `- Work will commence upon receipt of approved Purchase Order.\n\n` +
-    `Kind regards,\n` +
-    `${group.quotedBy || 'Estimations Dept'}\n` +
-    `Metalogik Engineering Workshops`;
-
-  const mailtoUrl = `mailto:${encodeURIComponent(recipientEmail)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-  const webOutlookUrl = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(recipientEmail)}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-
   const handlePrint = () => {
-    window.print();
-  };
-
-  const handleCopyEmailText = () => {
-    navigator.clipboard.writeText(emailBody);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
-  };
-
-  const handleDownloadEmlFile = () => {
-    // Generate native Microsoft Outlook .eml draft file
-    const emlLines = [
-      `To: ${recipientEmail || ''}`,
-      `Subject: ${emailSubject}`,
-      `X-Unsent: 1`,
-      `Content-Type: text/plain; charset="utf-8"`,
-      ``,
-      emailBody
-    ];
-    const emlContent = emlLines.join('\r\n');
-    const blob = new Blob([emlContent], { type: 'message/rfc822' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `PreQuote_${group.preQuoteId}.eml`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    setEmailSentNotice(true);
-    setTimeout(() => setEmailSentNotice(false), 6000);
-  };
-
-  const handleOpenOutlookDevice = () => {
-    // Copy full body text to clipboard as safety backup
-    navigator.clipboard.writeText(emailBody);
-
-    // Keep mailto body concise so OS protocol handlers do not reject or truncate long URLs
-    const shortSummary = `Dear ${group.customerName},\n\nPlease find attached the official quotation details for PreQuote ${group.preQuoteId}.\n\nTotal Quoted Amount: ${formatCurrency(group.totalCost)}\n\n(Full quotation text has been copied to your clipboard — press Ctrl+V to paste if needed).\n\nKind regards,\nMetalogik Engineering`;
-    
-    const safeMailto = `mailto:${encodeURIComponent(recipientEmail)}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(shortSummary)}`;
-    
-    // Trigger via invisible link element with target="_blank" to bypass iframe navigation restrictions
-    const a = document.createElement('a');
-    a.href = safeMailto;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-
-    setEmailSentNotice(true);
-    setTimeout(() => setEmailSentNotice(false), 6000);
-  };
-
-  const handleOpenOutlookWeb = () => {
-    window.open(webOutlookUrl, '_blank');
-    setEmailSentNotice(true);
-    setTimeout(() => setEmailSentNotice(false), 5000);
+    const success = openInNewWindow({
+      elementId: 'printable-prequote-doc',
+      documentTitle: `PreQuote Document ${group.preQuoteId}`
+    });
+    if (!success) {
+      triggerNativePrint('printable-prequote-doc');
+    }
   };
 
   return (
@@ -180,51 +76,6 @@ export default function PreQuoteDocumentModal({
             </div>
           </div>
 
-          {/* Mode Tabs */}
-          <div className="flex items-center gap-1.5 bg-slate-800 p-1 rounded-xl border border-slate-700">
-            <button
-              type="button"
-              onClick={() => setActiveTab('view')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'view'
-                  ? 'bg-purple-600 text-white shadow-2xs'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>View Document</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('print');
-                setTimeout(() => window.print(), 300);
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'print'
-                  ? 'bg-purple-600 text-white shadow-2xs'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
-              }`}
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print PreQuote</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('email')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'email'
-                  ? 'bg-purple-600 text-white shadow-2xs'
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700/60'
-              }`}
-            >
-              <Mail className="w-3.5 h-3.5" />
-              <span>Email Outlook</span>
-            </button>
-          </div>
-
           {/* Close button */}
           <button
             type="button"
@@ -235,285 +86,368 @@ export default function PreQuoteDocumentModal({
           </button>
         </div>
 
-        {/* Email Outlook Sidebar Panel when Email tab is active */}
-        {activeTab === 'email' && (
-          <div className="bg-purple-900/95 text-white p-4 border-b border-purple-700/60 flex flex-col gap-3 shrink-0 print:hidden animate-fade-in">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-600 flex items-center justify-center text-white shrink-0 shadow-md">
-                  <Mail className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-bold text-white flex items-center gap-2">
-                    <span>Send Quotation via Microsoft Outlook</span>
-                    <span className="text-[10px] bg-purple-700 text-purple-200 px-2 py-0.5 rounded-md font-mono">Device Outlook</span>
-                  </h4>
-                  <p className="text-[11px] text-purple-200 mt-0.5">
-                    Choose <strong>Outlook Draft (.eml)</strong> to open directly in desktop Microsoft Outlook, or click <strong>Launch Outlook App</strong>.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={handleCopyEmailText}
-                  className="flex-1 sm:flex-none px-3 py-2 bg-purple-800 hover:bg-purple-700 text-purple-100 text-xs font-bold rounded-xl border border-purple-600 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  title="Copy full quote text to clipboard"
-                >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Copied' : 'Copy Text'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleOpenOutlookWeb}
-                  className="flex-1 sm:flex-none px-3 py-2 bg-purple-800/80 hover:bg-purple-700 text-white text-xs font-bold rounded-xl border border-purple-500 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  title="Open in Outlook Web Browser"
-                >
-                  <span>Outlook Web</span>
-                  <ExternalLink className="w-3 h-3" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleOpenOutlookDevice}
-                  className="flex-1 sm:flex-none px-3.5 py-2 bg-purple-700 hover:bg-purple-600 text-white text-xs font-bold rounded-xl border border-purple-500 shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                  title="Trigger device default mail app"
-                >
-                  <Send className="w-3.5 h-3.5 text-purple-200" />
-                  <span>Launch Outlook App</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDownloadEmlFile}
-                  className="flex-1 sm:flex-none px-4 py-2 bg-white text-purple-950 hover:bg-purple-50 text-xs font-black rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-white"
-                  title="Download .eml file that opens directly in Microsoft Outlook desktop"
-                >
-                  <Download className="w-3.5 h-3.5 text-purple-700" />
-                  <span>Outlook Draft File (.eml)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Recipient Email Address Input */}
-            <div className="pt-2 border-t border-purple-800/80 flex flex-col sm:flex-row items-center gap-2">
-              <label className="text-xs text-purple-200 font-medium shrink-0 flex items-center gap-1.5">
-                <span>To (Customer Email):</span>
-              </label>
-              <input
-                type="email"
-                placeholder={`Enter recipient email for ${group.customerName}...`}
-                value={recipientEmail}
-                onChange={(e) => setRecipientEmail(e.target.value)}
-                className="w-full bg-purple-950/80 border border-purple-700/80 rounded-xl px-3 py-1.5 text-xs text-white placeholder-purple-400 focus:outline-none focus:border-purple-400"
-              />
-            </div>
-          </div>
-        )}
-
-        {emailSentNotice && (
-          <div className="bg-emerald-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-center gap-2 animate-fade-in print:hidden">
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Microsoft Outlook draft prepared! Opening in desktop Outlook application.</span>
-          </div>
-        )}
-
         {/* DOCUMENT PREVIEW CONTAINER */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-200/70">
           
           {/* Pure Printable Paper Document */}
           <div 
+            id="printable-prequote-doc"
             ref={documentRef}
-            className="bg-white rounded-xl border border-slate-300 shadow-xl max-w-3xl mx-auto p-6 sm:p-10 text-slate-800 font-sans print:shadow-none print:border-none print:p-0 print:m-0 print:max-w-none"
+            className="bg-white rounded-xl border border-slate-900 shadow-xl max-w-3xl mx-auto p-4 sm:p-6 text-slate-900 font-sans print:shadow-none print:border-none print:p-0 print:m-0 print:max-w-none text-left"
           >
-            {/* DOCUMENT HEADER */}
-            <div className="border-b-2 border-slate-900 pb-6 mb-6">
-              <div className="flex items-start justify-between gap-4">
-                {/* Company Logo & Branding */}
-                <div>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-900 text-white rounded-xl flex items-center justify-center font-black text-xl tracking-tighter">
-                      M
+            {/* TOP HEADER TABLE */}
+            <table className="w-full border-collapse border border-slate-900 text-xs font-sans">
+              <tbody>
+                <tr>
+                  {/* Top Left: Logo */}
+                  <td className="p-2 border border-slate-900 w-1/3 align-middle bg-white">
+                    <div className="flex items-center gap-2">
+                      <div className="w-10 h-10 bg-emerald-700 text-amber-300 font-black flex items-center justify-center rounded-lg text-lg border border-slate-800 shrink-0">
+                        M
+                      </div>
+                      <div>
+                        <div className="text-[9px] font-black tracking-widest text-slate-500 uppercase">SABS ISO 9001</div>
+                        <div className="text-xs font-black tracking-tight text-slate-900 uppercase">METALOGIK</div>
+                        <div className="text-[8px] font-bold text-slate-600">ENGINEERING SERVICES (Pty) Ltd</div>
+                        <div className="text-[7px] font-semibold text-emerald-700 uppercase tracking-widest">ADVANCED LOGIC</div>
+                      </div>
                     </div>
-                    <div>
-                      <h1 className="text-xl font-black tracking-tight text-slate-900 font-display">
-                        METALOGIK ENGINEERING
-                      </h1>
-                      <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest">
-                        Precision Component Reconditioning & Machining
-                      </p>
+                  </td>
+
+                  {/* Top Right: Document Title & Metadata Table */}
+                  <td className="p-0 border border-slate-900 w-2/3 align-top">
+                    <div className="text-center font-bold text-xs py-1 border-b border-slate-900 bg-slate-100 text-slate-900">
+                      Metalogik Engineering Services (PTY) Ltd
                     </div>
-                  </div>
-                  <p className="text-[11px] text-slate-500 mt-2 font-medium">
-                    12 Industrial Park Way, Engineering Zone • Tel: +27 11 982 0000 • quote@metalogik.co.za
-                  </p>
-                </div>
+                    <table className="w-full text-[10px] border-collapse">
+                      <tbody>
+                        <tr className="border-b border-slate-300">
+                          <td className="p-1 font-bold bg-slate-50 w-28 border-r border-slate-300">Document Name:</td>
+                          <td className="p-1 font-bold border-r border-slate-300">PRE QUOTE SHEET</td>
+                          <td className="p-1 font-bold bg-slate-50 w-24 border-r border-slate-300">Document No:</td>
+                          <td className="p-1 font-semibold">MET-FCR-PQS-01</td>
+                        </tr>
+                        <tr className="border-b border-slate-300">
+                          <td className="p-1 font-bold bg-slate-50 border-r border-slate-300">Organisational Area:</td>
+                          <td className="p-1 border-r border-slate-300">SHEQ</td>
+                          <td className="p-1 font-bold bg-slate-50 border-r border-slate-300">Effective Date:</td>
+                          <td className="p-1">2022/07/01</td>
+                        </tr>
+                        <tr className="border-b border-slate-300">
+                          <td className="p-1 font-bold bg-slate-50 border-r border-slate-300">Document Type:</td>
+                          <td className="p-1 border-r border-slate-300">Forms/Checklists/Registers</td>
+                          <td className="p-1 font-bold bg-slate-50 border-r border-slate-300">Revision:</td>
+                          <td className="p-1">Rev.1</td>
+                        </tr>
+                        <tr>
+                          <td className="p-1 font-bold bg-slate-50 border-r border-slate-300">Document Owner:</td>
+                          <td className="p-1 border-r border-slate-300">K. Govender</td>
+                          <td className="p-1 font-bold bg-slate-50 border-r border-slate-300">Page:</td>
+                          <td className="p-1">See Bottom of Page</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
-                {/* PreQuote Main Identifier Stamp */}
-                <div className="text-right">
-                  <span className="text-[10px] font-black uppercase text-purple-700 bg-purple-50 px-3 py-1 rounded-md border border-purple-200 tracking-wider">
-                    Official Quotation
-                  </span>
-                  <h2 className="text-2xl font-black text-purple-900 font-mono tracking-tight mt-1">
-                    {group.preQuoteId}
-                  </h2>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">
-                    Date: <span className="font-bold text-slate-800">{group.quotedAt || new Date().toISOString().split('T')[0]}</span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Customer & Delivery Information Block */}
-              <div className="grid grid-cols-2 gap-4 mt-6 bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Customer Details</p>
-                  <p className="text-sm font-extrabold text-slate-900 mt-0.5">{group.customerName}</p>
-                  <p className="text-slate-600 mt-0.5 font-medium">
-                    Delivery Note Ref: <strong className="text-slate-900 font-mono">{deliveryNotesText}</strong>
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estimator & Status</p>
-                  <p className="text-xs font-bold text-slate-800 mt-0.5">Prepared By: {group.quotedBy}</p>
-                  <p className="text-xs font-bold text-purple-800 mt-0.5">
-                    Status: {group.hasJobCard ? 'Job Card Issued' : 'PreQuote Estimation Complete'}
-                  </p>
-                </div>
-              </div>
+            <div className="text-[9px] text-slate-500 italic py-0.5 text-left">
+              All printed copies are not controlled. For controlled version refer to electronic version
             </div>
 
-            {/* DOCUMENT COMPONENT LINES & STEPS BREAKDOWN */}
-            <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">
-                  Quoted Components & Standard Repair Operations
-                </h3>
-                <span className="text-xs text-slate-400 font-medium">
-                  {group.jobs.length} Component{group.jobs.length > 1 ? 's' : ''} Included
-                </span>
-              </div>
+            {/* YELLOW HEADING BANNER */}
+            <div className="bg-amber-400 border border-slate-900 text-center py-1 my-1">
+              <h2 className="text-xl font-black tracking-widest text-slate-900 uppercase">
+                QUOTE SHEET
+              </h2>
+            </div>
 
-              {group.jobs.map((job, jobIdx) => {
-                const steps = job.preQuoteDetails?.steps || [];
-                const jobCost = job.preQuoteDetails?.totalCost || 0;
+            {/* DATE & REF ROW */}
+            {(() => {
+              const rawDate = group.quotedAt || new Date().toISOString().split('T')[0];
+              const dateParts = rawDate.split('-');
+              let formattedDateDigits = rawDate;
+              if (dateParts.length === 3) {
+                const [yyyy, mm, dd] = dateParts;
+                formattedDateDigits = `${dd.padStart(2, '0')} - ${mm.padStart(2, '0')} - ${yyyy}`;
+              }
 
-                return (
-                  <div key={job.id || jobIdx} className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-                    {/* Component Header Bar: Name/Model & Unique ID on the left */}
-                    <div className="bg-slate-100 p-3 px-4 border-b border-slate-200 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-extrabold text-slate-900 font-display">
-                            {jobIdx + 1}. {job.componentType} {job.modelName ? `(${job.modelName})` : ''}
-                          </span>
-                          <span className="text-[10px] font-mono bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md font-bold">
-                            Job ID: {job.id}
-                          </span>
-                          {job.serialNumber && (
-                            <span className="text-[10px] font-mono bg-purple-100 text-purple-900 px-2 py-0.5 rounded-md font-bold">
-                              S/N: {job.serialNumber}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                          Delivery Note #: <strong className="text-slate-700 font-mono">{job.deliveryNoteNumber || 'N/A'}</strong>
-                        </p>
-                      </div>
+              const customerBranch = group.jobs.find(j => j.customerBranch)?.customerBranch || 'N/A';
+              const customerOrderNo = group.jobs.map(j => j.customerOrderNo || j.purchaseOrderNumber || j.jobCardDetails?.orderNumber).filter(Boolean).join(', ') || 'N/A';
+              const modelsText = group.jobs.map(j => j.modelName).filter(Boolean).join(', ') || 'N/A';
+              const partNosText = group.jobs.map(j => j.partNumber || j.serialNumber).filter(Boolean).join(', ') || 'N/A';
+              const customerJobNosText = group.jobs.map(j => j.customerJobNo || j.jobCardDetails?.customerJobNumber || j.id).filter(Boolean).join(', ');
+              const partDescriptionsText = group.jobs.map(j => j.partDescription || j.componentType).filter(Boolean).join(', ') || 'N/A';
 
-                      <div className="text-right">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Component Subtotal</span>
-                        <span className="text-sm font-black text-slate-900 font-mono">
-                          {formatCurrency(jobCost)}
-                        </span>
-                      </div>
+              return (
+                <>
+                  <div className="grid grid-cols-2 border border-slate-900 bg-slate-100 text-xs font-bold text-slate-900 mb-2">
+                    <div className="p-1.5 border-r border-slate-900 flex items-center gap-2">
+                      <span>Date:</span>
+                      <span className="font-mono text-xs tracking-widest px-2 py-0.5 bg-white border border-slate-400 rounded-xs">
+                        {formattedDateDigits}
+                      </span>
                     </div>
+                    <div className="p-1.5 flex items-center gap-2 justify-end pr-3">
+                      <span>REF:</span>
+                      <span className="font-mono text-xs tracking-widest px-2 py-0.5 bg-white border border-slate-400 rounded-xs">
+                        {group.preQuoteId}
+                      </span>
+                    </div>
+                  </div>
 
-                    {/* Under it: Steps linked to this job on the left, step prices on the right */}
-                    <div className="p-4">
-                      {steps.length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">No specific repair steps recorded for this component.</p>
-                      ) : (
-                        <table className="w-full text-xs text-left">
-                          <thead>
-                            <tr className="text-[10px] uppercase text-slate-400 font-bold border-b border-slate-100">
-                              <th className="pb-2 w-12 text-center">Step</th>
-                              <th className="pb-2">Operation / Repair Description</th>
-                              <th className="pb-2 text-right pr-2">Price</th>
+                  {/* CUSTOMER DETAILS & JOB DETAILS TABLE */}
+                  <table className="w-full border-collapse border border-slate-900 text-xs text-left mb-2">
+                    <thead>
+                      <tr className="bg-slate-700 text-white font-bold border-b border-slate-900">
+                        <th className="p-1.5 w-1/2 border-r border-slate-900">Customer Details:</th>
+                        <th className="p-1.5 w-1/2">Job Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-300">
+                      <tr>
+                        <td className="p-1.5 border-r border-slate-900">
+                          <span className="font-semibold text-slate-500">Customer Name:</span>{' '}
+                          <strong className="text-slate-900 font-bold">{group.customerName}</strong>
+                        </td>
+                        <td className="p-1.5">
+                          <span className="font-semibold text-slate-500">Customer Branch:</span>{' '}
+                          <span className="text-slate-800">{customerBranch}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-1.5 border-r border-slate-900">
+                          <span className="font-semibold text-slate-500">Customer Order No:</span>{' '}
+                          <span className="text-slate-800">{customerOrderNo}</span>
+                        </td>
+                        <td className="p-1.5">
+                          <span className="font-semibold text-slate-500">Model:</span>{' '}
+                          <span className="text-slate-800 font-bold">{modelsText}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-1.5 border-r border-slate-900">
+                          <span className="font-semibold text-slate-500">Customer Delivery No:</span>{' '}
+                          <span className="text-slate-800 font-mono">{deliveryNotesText}</span>
+                        </td>
+                        <td className="p-1.5">
+                          <span className="font-semibold text-slate-500">Part No:</span>{' '}
+                          <span className="text-slate-800 font-mono">{partNosText}</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="p-1.5 border-r border-slate-900">
+                          <span className="font-semibold text-slate-500">Customer Job No:</span>{' '}
+                          <span className="text-slate-800 font-mono">{customerJobNosText}</span>
+                        </td>
+                        <td className="p-1.5">
+                          <span className="font-semibold text-slate-500">Part Description:</span>{' '}
+                          <span className="text-slate-800 font-bold">{partDescriptionsText}</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* JOB REPAIR DETAILS BANNER */}
+                  <div className="bg-slate-700 text-white font-bold text-center py-1 text-xs border border-slate-900 border-b-0 uppercase tracking-wider">
+                    Job Repair Details
+                  </div>
+
+                  {/* JOB REPAIR DETAILS TABLE */}
+                  <table className="w-full border-collapse border border-slate-900 text-xs text-left mb-3">
+                    <thead>
+                      <tr className="bg-slate-200 text-slate-900 font-bold border-b border-slate-900">
+                        <th className="p-1.5 border-r border-slate-900 w-24">Our Job No</th>
+                        <th className="p-1.5 border-r border-slate-900 w-44">Part No /Part Description</th>
+                        <th className="p-1.5 border-r border-slate-900">Repair Procedure</th>
+                        <th className="p-1.5 border-r border-slate-900 text-center w-12">Qty</th>
+                        <th className="p-1.5 border-r border-slate-900 text-right w-24">Price/Each</th>
+                        <th className="p-1.5 text-right w-36 bg-emerald-800 text-white font-bold">Customer Price (Incl 15% VAT)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-300">
+                      {group.jobs.map((job, jobIdx) => {
+                        const allSteps = job.preQuoteDetails?.steps || [];
+                        const jobPrefix = `${job.id} - `;
+                        let componentSteps = allSteps.filter(s => s.stepName.startsWith(jobPrefix));
+                        
+                        // Fallback if steps were saved without prefix tagging
+                        if (componentSteps.length === 0 && (group.jobs.length === 1 || !allSteps.some(s => group.jobs.some(o => s.stepName.startsWith(`${o.id} - `))))) {
+                          componentSteps = allSteps;
+                        }
+
+                        const cleanName = (name: string) => name.startsWith(jobPrefix) ? name.substring(jobPrefix.length) : name;
+                        const partDesc = job.partDescription || job.partNumber || (job.modelName ? `${job.modelName} ${job.componentType}` : job.componentType);
+                        
+                        const compTotalExclVat = componentSteps.reduce((sum, s) => sum + (s.price * (s.quantity || 1)), 0) || (job.preQuoteDetails?.totalCost || 0);
+                        const compTotalInclVat = compTotalExclVat * 1.15;
+                        const compTotalQty = componentSteps.reduce((sum, s) => sum + (s.quantity || 1), 0) || (job.qty || 1);
+
+                        return (
+                          <React.Fragment key={job.id || jobIdx}>
+                            {/* Component Main Row */}
+                            <tr className="bg-slate-100/90 font-bold align-top border-t border-slate-900">
+                              <td className="p-1.5 font-mono font-extrabold text-slate-900 border-r border-slate-900">
+                                <div>{job.id}</div>
+                                <div className="text-[9px] text-slate-500 font-sans uppercase font-semibold">Comp #{jobIdx + 1}</div>
+                              </td>
+                              <td className="p-1.5 font-extrabold text-slate-900 border-r border-slate-900 uppercase">
+                                {partDesc}
+                              </td>
+                              <td className="p-1.5 border-r border-slate-900 font-black uppercase text-slate-900 text-[11px]">
+                                TO REPAIR AS FOLLOWS:
+                              </td>
+                              <td className="p-1.5 text-center border-r border-slate-900"></td>
+                              <td className="p-1.5 text-right border-r border-slate-900"></td>
+                              <td className="p-1.5 text-right bg-emerald-50/30"></td>
                             </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {steps.map((step, stepIdx) => (
-                              <tr key={stepIdx} className="hover:bg-slate-50">
-                                <td className="py-2 text-center font-mono text-slate-400 text-[11px]">
-                                  {stepIdx + 1}
+
+                            {/* Individual Repair Steps Rows */}
+                            {componentSteps.length > 0 ? (
+                              componentSteps.map((step, sIdx) => {
+                                const stepQty = step.quantity || 1;
+                                const unitPrice = step.price;
+                                const stepSubtotalExclVat = unitPrice * stepQty;
+                                const stepSubtotalInclVat = stepSubtotalExclVat * 1.15;
+
+                                return (
+                                  <tr key={`step-${sIdx}`} className="align-top border-t border-slate-200 hover:bg-slate-50">
+                                    <td className="p-1.5 border-r border-slate-900"></td>
+                                    <td className="p-1.5 border-r border-slate-900"></td>
+                                    <td className="p-1.5 border-r border-slate-900 pl-4 font-semibold text-slate-800 text-[11px] uppercase">
+                                      • {cleanName(step.stepName)}
+                                    </td>
+                                    <td className="p-1.5 text-center font-bold text-slate-900 border-r border-slate-900 text-xs">
+                                      {stepQty}
+                                    </td>
+                                    <td className="p-1.5 text-right font-mono text-slate-900 border-r border-slate-900 text-xs">
+                                      {formatCurrency(unitPrice)}
+                                    </td>
+                                    <td className="p-1.5 text-right font-mono font-bold text-slate-900 bg-emerald-50/50 text-xs">
+                                      {formatCurrency(stepSubtotalInclVat)}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr className="align-top border-t border-slate-200">
+                                <td className="p-1.5 border-r border-slate-900"></td>
+                                <td className="p-1.5 border-r border-slate-900"></td>
+                                <td className="p-1.5 border-r border-slate-900 italic text-slate-500 text-[10px]">
+                                  Standard repair & reconditioning procedure
                                 </td>
-                                <td className="py-2 font-medium text-slate-800">
-                                  {step.stepName}
-                                  {step.isCustom && (
-                                    <span className="ml-2 text-[9px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.2 rounded-xs font-semibold">
-                                      Custom Line
-                                    </span>
-                                  )}
+                                <td className="p-1.5 text-center font-bold text-slate-900 border-r border-slate-900">1</td>
+                                <td className="p-1.5 text-right font-mono text-slate-900 border-r border-slate-900">
+                                  {formatCurrency(job.preQuoteDetails?.totalCost || 0)}
                                 </td>
-                                <td className="py-2 text-right pr-2 font-bold font-mono text-slate-900">
-                                  {formatCurrency(step.price)}
+                                <td className="p-1.5 text-right font-mono font-bold text-slate-900 bg-emerald-50/50">
+                                  {formatCurrency((job.preQuoteDetails?.totalCost || 0) * 1.15)}
                                 </td>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      )}
+                            )}
+
+                            {/* Component Subtotal Summary Row */}
+                            <tr className="bg-slate-100/70 font-bold border-t border-slate-400">
+                              <td className="p-1.5 border-r border-slate-900"></td>
+                              <td className="p-1.5 border-r border-slate-900"></td>
+                              <td className="p-1.5 border-r border-slate-900 font-extrabold text-right pr-2 uppercase text-[10px] text-slate-700">
+                                Subtotal Job {job.id}:
+                              </td>
+                              <td className="p-1.5 text-center font-black text-slate-900 border-r border-slate-900">
+                                {compTotalQty}
+                              </td>
+                              <td className="p-1.5 text-right font-mono font-bold text-slate-900 border-r border-slate-900">
+                                {formatCurrency(compTotalExclVat)}
+                              </td>
+                              <td className="p-1.5 text-right font-mono font-black text-slate-900 bg-emerald-100">
+                                {formatCurrency(compTotalInclVat)}
+                              </td>
+                            </tr>
+
+                            {/* Leave one space open before next component */}
+                            {jobIdx < group.jobs.length - 1 && (
+                              <tr className="h-6 bg-slate-50">
+                                <td colSpan={6} className="p-2 border-y border-slate-300">
+                                  &nbsp;
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {/* NOTES & ESTIMATED TIMES TABLE + PQ TOTAL BANNER */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end mb-3">
+                    {/* Notes Table */}
+                    <table className="border-collapse border border-slate-900 text-[9px] w-full text-left">
+                      <tbody className="divide-y divide-slate-300">
+                        <tr>
+                          <td className="p-1 font-bold bg-slate-100 border-r border-slate-900 w-10">NOTE</td>
+                          <td className="p-1 font-semibold border-r border-slate-900">Average days</td>
+                          <td className="p-1">±____ working days to repair parts</td>
+                        </tr>
+                        <tr>
+                          <td className="p-1 font-bold bg-slate-100 border-r border-slate-900">NOTE</td>
+                          <td className="p-1 font-semibold border-r border-slate-900">EST TIME: STRIPPING</td>
+                          <td className="p-1">±____ working days to repair parts</td>
+                        </tr>
+                        <tr>
+                          <td className="p-1 font-bold bg-slate-100 border-r border-slate-900">NOTE</td>
+                          <td className="p-1 font-semibold border-r border-slate-900">EST TIME: CLEANING</td>
+                          <td className="p-1">±____ working days to repair parts</td>
+                        </tr>
+                        <tr>
+                          <td className="p-1 font-bold bg-slate-100 border-r border-slate-900">NOTE</td>
+                          <td className="p-1 font-semibold border-r border-slate-900">EST TIME: SANDBLAST</td>
+                          <td className="p-1">±____ working days to repair parts</td>
+                        </tr>
+                        <tr>
+                          <td className="p-1 font-bold bg-slate-100 border-r border-slate-900">NOTE</td>
+                          <td className="p-1 font-semibold border-r border-slate-900">EST TIME: INSPECTION</td>
+                          <td className="p-1">±____ working days to repair parts</td>
+                        </tr>
+                        <tr>
+                          <td className="p-1 font-bold bg-slate-100 border-r border-slate-900">NOTE</td>
+                          <td className="p-1 font-semibold border-r border-slate-900">BWE to Supply</td>
+                          <td className="p-1">Re-Use & Salvage Guidelines</td>
+                        </tr>
+                        <tr>
+                          <td className="p-1 font-bold bg-slate-100 border-r border-slate-900">NOTE</td>
+                          <td className="p-1 font-semibold border-r border-slate-900">BWE to Supply</td>
+                          <td className="p-1">Drawing</td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    {/* PQ No & Total Summary Banner */}
+                    <div className="border border-slate-900 bg-amber-400 p-2 flex flex-wrap items-center justify-between text-slate-900 font-extrabold text-xs sm:text-sm shadow-xs gap-2">
+                      <span>PQ No: {group.preQuoteId}</span>
+                      <div className="flex items-center gap-4 text-xs font-bold">
+                        <span>Excl VAT: <strong className="font-mono text-slate-900">{formatCurrency(group.totalCost)}</strong></span>
+                        <span>VAT (15%): <strong className="font-mono text-slate-900">{formatCurrency(group.totalCost * 0.15)}</strong></span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-sm">
+                        <span className="uppercase tracking-wider text-xs">Total (Incl 15% VAT):</span>
+                        <span className="font-mono text-base font-black text-slate-950">{formatCurrency(group.totalCost * 1.15)}</span>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
 
-            {/* GRAND TOTAL SUMMARY BLOCK */}
-            <div className="mt-8 border-t-2 border-slate-900 pt-6 flex flex-col sm:flex-row items-start justify-between gap-6">
-              {/* Terms & Conditions Notes */}
-              <div className="text-xs text-slate-500 max-w-sm space-y-1">
-                <p className="font-bold text-slate-800 text-[11px] uppercase tracking-wider">Terms of Quotation</p>
-                <p className="text-[11px]">1. Quotation is valid for 30 days from date of issue.</p>
-                <p className="text-[11px]">2. Standard turnaround times apply upon Purchase Order receipt.</p>
-                <p className="text-[11px]">3. All reconditioned components carry 6-month workshop warranty.</p>
-              </div>
-
-              {/* Totals */}
-              <div className="w-full sm:w-72 bg-slate-900 text-white p-5 rounded-2xl shadow-md text-right space-y-2">
-                <div className="flex justify-between text-xs text-slate-400 font-medium">
-                  <span>Components Total ({group.jobs.length}):</span>
-                  <span>{formatCurrency(group.totalCost)}</span>
-                </div>
-                <div className="flex justify-between text-xs text-slate-400 font-medium">
-                  <span>VAT / Tax (0% Excl):</span>
-                  <span>R 0.00</span>
-                </div>
-                <div className="border-t border-slate-700 pt-2.5 flex justify-between items-center">
-                  <span className="text-xs font-extrabold uppercase text-purple-300">Grand Total</span>
-                  <span className="text-xl font-black font-mono text-white">
-                    {formatCurrency(group.totalCost)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Signature Block */}
-            <div className="mt-10 pt-6 border-t border-slate-200 grid grid-cols-2 gap-8 text-xs text-slate-500">
-              <div>
-                <p className="font-bold text-slate-800">Authorized Estimator Signature:</p>
-                <div className="h-10 border-b border-slate-300 mt-2"></div>
-                <p className="text-[10px] mt-1">{group.quotedBy || 'Metalogik Representative'}</p>
-              </div>
-              <div>
-                <p className="font-bold text-slate-800">Customer Authorization / PO #:</p>
-                <div className="h-10 border-b border-slate-300 mt-2"></div>
-                <p className="text-[10px] mt-1">Sign & Return to Approve Quotation</p>
-              </div>
-            </div>
-
+                  {/* DOCUMENT FOOTER */}
+                  <div className="border-t border-slate-300 pt-2 flex items-center justify-between text-[9px] font-bold">
+                    <span className="text-red-700 uppercase tracking-tight">
+                      THIS DOCUMENT IS THE SOLE PROPERTY OF Metalogik Engineering Services PTY LTD
+                    </span>
+                    <span className="text-slate-600">
+                      1 OF 1
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
 
@@ -527,19 +461,10 @@ export default function PreQuoteDocumentModal({
             <button
               type="button"
               onClick={handlePrint}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-purple-400" />
-              <span>Print</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleOpenOutlookDevice}
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-md"
             >
-              <Mail className="w-4 h-4" />
-              <span>Email Outlook</span>
+              <Printer className="w-4 h-4 text-white" />
+              <span>Print</span>
             </button>
 
             <button

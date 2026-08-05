@@ -65,7 +65,8 @@ import {
   Lock,
   Search,
   Menu,
-  X
+  X,
+  Boxes
 } from 'lucide-react';
 
 export default function App() {
@@ -129,6 +130,7 @@ export default function App() {
               canInspect: isEmailAdmin,
               canQuote: isEmailAdmin,
               canCreateJobCard: isEmailAdmin,
+              canStores: isEmailAdmin,
               canClose: isEmailAdmin,
               isAdmin: isEmailAdmin
             };
@@ -325,18 +327,28 @@ export default function App() {
     if (p.isAdmin) return true; // Admins have full override permission!
 
     switch(tabName) {
-      case 'dashboard':
-      case 'stores': return true;
-      case 'receiving': return p.canReceive;
-      case 'inspection': return p.canInspect;
-      case 'quoting': return p.canQuote;
-      case 'jobcard': return p.canCreateJobCard;
+      case 'dashboard': return true;
+      case 'stores': return Boolean(p.canStores);
+      case 'receiving': return Boolean(p.canReceive || p.canCreateJobCard);
+      case 'inspection': return Boolean(p.canInspect || p.canCreateJobCard);
+      case 'quoting': return Boolean(p.canQuote || p.canCreateJobCard);
+      case 'jobcard': return Boolean(p.canCreateJobCard);
       case 'enquiries':
-      case 'closing': return true; // All users can search & enquire jobs! Only authorized operators can sign off.
-      case 'admin': return p.isAdmin;
+      case 'closing': return Boolean(p.canClose || p.canCreateJobCard);
+      case 'admin': return Boolean(p.isAdmin);
       default: return false;
     }
   };
+
+  // Automatically redirect user if current activeTab is not permitted
+  useEffect(() => {
+    if (userProfile && !hasAccess(activeTab)) {
+      const allowed = ['dashboard', 'receiving', 'inspection', 'quoting', 'jobcard', 'enquiries', 'stores', 'admin'].find(tab => hasAccess(tab));
+      if (allowed) {
+        setActiveTab(allowed);
+      }
+    }
+  }, [userProfile, activeTab]);
 
   // Loading Screens
   if (authLoading) {
@@ -362,8 +374,12 @@ export default function App() {
     { id: 'quoting', label: '3. Pre Quote', icon: Calculator, stage: 'Stage 3' },
     { id: 'jobcard', label: '4. Job Card Creation', icon: CalendarRange, stage: 'Stage 4' },
     { id: 'enquiries', label: '5. Job Enquiries', icon: Search, stage: 'Stage 5' },
+    { id: 'stores', label: 'Stores Inventory', icon: Boxes },
     { id: 'admin', label: 'Admin Center', icon: Lock, isAdminOnly: true },
   ];
+
+  // Only render menu items that the logged in user is authorized to access
+  const visibleNavItems = navigationItems.filter(item => hasAccess(item.id));
 
   return (
     <div className="h-screen w-screen overflow-hidden flex flex-col md:flex-row bg-slate-50 font-sans" id="app-container">
@@ -438,10 +454,9 @@ export default function App() {
 
         {/* Navigation Sidebar List */}
         <nav className="flex-1 p-3 md:p-4 space-y-1 overflow-y-auto text-left">
-          {navigationItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const IconComponent = item.icon;
             const isSelected = activeTab === item.id;
-            const permitted = hasAccess(item.id);
 
             return (
               <button
@@ -465,9 +480,6 @@ export default function App() {
                   <span className="text-[9px] font-bold bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-sm border border-slate-750">
                     {item.stage}
                   </span>
-                )}
-                {!permitted && (
-                  <span className="text-[9px] font-bold text-red-400/80 uppercase tracking-widest">Locked</span>
                 )}
               </button>
             );

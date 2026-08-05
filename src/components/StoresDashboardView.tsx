@@ -425,22 +425,11 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
   return (
     <div className="space-y-6 text-left" id="stores-dashboard-root">
       {/* Header Banner & Slider Switcher */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-2xs">
-              <Boxes className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-slate-900 tracking-tight font-display">
-                Stores Inventory & Allocation Dashboard
-              </h1>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Manage tools stock sign-outs, shop consumables, and employee job allocations.
-              </p>
-            </div>
-          </div>
-        </div>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center justify-center gap-3 text-center">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight font-display flex items-center justify-center gap-2">
+          <Boxes className="w-6 h-6 text-blue-600" />
+          Stores Inventory
+        </h1>
 
         {/* STORES TOP SLIDER SWITCHER */}
         <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap sm:flex-nowrap items-center gap-1 shrink-0">

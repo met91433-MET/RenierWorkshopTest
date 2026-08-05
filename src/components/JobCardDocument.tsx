@@ -319,10 +319,11 @@ export default function JobCardDocument({
                   <div className="space-y-2">
                     {displaySteps.map((step, idx) => {
                       const cleanName = step.stepName.startsWith(prefix) ? step.stepName.substring(prefix.length) : step.stepName;
+                      const q = step.quantity || 1;
                       return (
                         <div key={idx} className="flex items-start gap-2 leading-snug">
                           <span className="text-[13px] text-slate-500 font-mono font-bold mt-0.5">[ ]</span>
-                          <span><span className="font-bold mr-1.5">{idx + 1}.</span>{cleanName}</span>
+                          <span><span className="font-bold mr-1.5">{idx + 1}.</span>{q > 1 ? `(${q}x) ` : ''}{cleanName}</span>
                         </div>
                       );
                     })}

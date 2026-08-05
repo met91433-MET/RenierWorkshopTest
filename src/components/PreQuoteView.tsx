@@ -28,6 +28,8 @@ interface PreQuoteViewProps {
   currentUser: any;
 }
 
+const formatCurrency = (amount: number) => 'R ' + (amount || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 export default function PreQuoteView({
   jobs,
   componentsList,
@@ -48,12 +50,14 @@ export default function PreQuoteView({
 
   // Selector for adding predefined steps
   const [selectedPredefinedStep, setSelectedPredefinedStep] = useState('');
+  const [predefinedStepQty, setPredefinedStepQty] = useState<number>(1);
 
   // Modal for Linking Jobs from Other Deliveries
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [linkSearchTerm, setLinkSearchTerm] = useState('');
   const [customStepName, setCustomStepName] = useState('');
   const [customStepPrice, setCustomStepPrice] = useState<number | ''>('');
+  const [customStepQty, setCustomStepQty] = useState<number>(1);
 
   // Grouping logic for the sidebar
   const getDeliveryGroups = () => {
@@ -281,9 +285,10 @@ export default function PreQuoteView({
 
     setQuoteSteps(prev => [
       ...prev,
-      { stepName: fullStepName, price, isCustom: false }
+      { stepName: fullStepName, price, quantity: Math.max(1, predefinedStepQty || 1), isCustom: false }
     ]);
     setSelectedPredefinedStep('');
+    setPredefinedStepQty(1);
   };
 
   // Add a fully custom step
@@ -299,10 +304,11 @@ export default function PreQuoteView({
 
     setQuoteSteps(prev => [
       ...prev,
-      { stepName: fullStepName, price: Number(customStepPrice), isCustom: true }
+      { stepName: fullStepName, price: Number(customStepPrice), quantity: Math.max(1, customStepQty || 1), isCustom: true }
     ]);
     setCustomStepName('');
     setCustomStepPrice('');
+    setCustomStepQty(1);
   };
 
   const removeStep = (idx: number) => {
@@ -317,7 +323,15 @@ export default function PreQuoteView({
     });
   };
 
-  const totalCost = quoteSteps.reduce((sum, step) => sum + step.price, 0);
+  const handleQuantityChange = (idx: number, newQty: number) => {
+    setQuoteSteps(prev => {
+      const updated = [...prev];
+      updated[idx].quantity = Math.max(1, newQty);
+      return updated;
+    });
+  };
+
+  const totalCost = quoteSteps.reduce((sum, step) => sum + (step.price * (step.quantity || 1)), 0);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -330,14 +344,17 @@ export default function PreQuoteView({
 
     setIsSubmitting(true);
     try {
+      // Ensure all jobs in this pre-quote group share the EXACT same preQuoteId
+      const existingPqId = selectedGroupJobs.find(j => j.preQuoteDetails?.preQuoteId)?.preQuoteDetails?.preQuoteId;
+      const sharedPqId = existingPqId || getPreQuoteId(selectedGroupJobs[0], jobs);
+
       // Save pre-quote to all jobs in the quote group
       const updatePromises = selectedGroupJobs.map(job => {
-        const generatedPqId = job.preQuoteDetails?.preQuoteId || getPreQuoteId(job, jobs);
         const updatedJob: Job = {
           ...job,
           status: 'PreQuoted',
           preQuoteDetails: {
-            preQuoteId: generatedPqId,
+            preQuoteId: sharedPqId,
             steps: quoteSteps,
             totalCost,
             quotedAt: new Date().toISOString().split('T')[0],
@@ -370,14 +387,11 @@ export default function PreQuoteView({
   return (
     <div className="space-y-6" id="prequote-view-root">
       {/* Header */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-left">
-        <h1 className="text-xl font-semibold text-slate-800 font-display flex items-center gap-2">
-          <Calculator className="w-5 h-5 text-purple-500" />
-          Pre-Quote Repair Estimator
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 font-display flex items-center justify-center gap-2">
+          <Calculator className="w-6 h-6 text-purple-500" />
+          Pre Quote
         </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Compile repair quotes once all delivery components are fully inspected. Build a single consolidated pre-quote for entire orders, or link additional jobs dynamically.
-        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -405,19 +419,22 @@ export default function PreQuoteView({
           </div>
 
           {/* Tab Slider Control */}
-          <div className="bg-slate-100 p-1 rounded-xl flex items-center gap-1 border border-slate-200">
+          <div className="bg-slate-100 p-1 rounded-xl grid grid-cols-3 gap-1 border border-slate-200 w-full min-w-0">
             <button
               type="button"
               onClick={() => setActiveLeftTab('ready')}
-              className={`flex-1 py-1.5 px-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
+              className={`min-w-0 w-full py-1.5 px-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
                 activeLeftTab === 'ready'
                   ? 'bg-white text-emerald-700 shadow-xs border border-slate-200/80'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
+              title="Ready to Quote"
             >
-              <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-              <span className="truncate">Ready to Quote</span>
-              <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold shrink-0 ${
+              <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+              <span className="truncate">
+                Ready<span className="hidden xl:inline"> to Quote</span>
+              </span>
+              <span className={`text-[9px] px-1 py-0.2 rounded-full font-extrabold shrink-0 ${
                 activeLeftTab === 'ready' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
               }`}>
                 {readyGroups.length}
@@ -427,15 +444,18 @@ export default function PreQuoteView({
             <button
               type="button"
               onClick={() => setActiveLeftTab('pending')}
-              className={`flex-1 py-1.5 px-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
+              className={`min-w-0 w-full py-1.5 px-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
                 activeLeftTab === 'pending'
                   ? 'bg-white text-amber-700 shadow-xs border border-slate-200/80'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
+              title="Pending Inspection"
             >
-              <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-              <span className="truncate">Pending Inspection</span>
-              <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold shrink-0 ${
+              <Lock className="w-3 h-3 text-amber-500 shrink-0" />
+              <span className="truncate">
+                Pending<span className="hidden xl:inline"> Insp.</span>
+              </span>
+              <span className={`text-[9px] px-1 py-0.2 rounded-full font-extrabold shrink-0 ${
                 activeLeftTab === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-600'
               }`}>
                 {blockedGroups.length}
@@ -445,15 +465,18 @@ export default function PreQuoteView({
             <button
               type="button"
               onClick={() => setActiveLeftTab('waiting')}
-              className={`flex-1 py-1.5 px-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
+              className={`min-w-0 w-full py-1.5 px-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${
                 activeLeftTab === 'waiting'
                   ? 'bg-white text-blue-700 shadow-xs border border-slate-200/80'
                   : 'text-slate-500 hover:text-slate-800'
               }`}
+              title="Waiting Inspection"
             >
-              <Clock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-              <span className="truncate">Waiting Inspection</span>
-              <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold shrink-0 ${
+              <Clock className="w-3 h-3 text-blue-500 shrink-0" />
+              <span className="truncate">
+                Waiting<span className="hidden xl:inline"> Insp.</span>
+              </span>
+              <span className={`text-[9px] px-1 py-0.2 rounded-full font-extrabold shrink-0 ${
                 activeLeftTab === 'waiting' ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-600'
               }`}>
                 {filteredWaitingJobs.length}
@@ -660,8 +683,7 @@ export default function PreQuoteView({
                       <button
                         type="button"
                         onClick={() => handleUnlinkJob(job.id)}
-                        disabled={selectedGroupJobs.length <= 1}
-                        className="text-slate-400 hover:text-red-500 disabled:opacity-30 p-1.5 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                         title="Remove component from this pre-quote"
                       >
                         <Unlink className="w-4 h-4" />
@@ -768,6 +790,16 @@ export default function PreQuoteView({
                             <option value="" disabled>All matrix steps already added</option>
                           )}
                         </select>
+                        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1 shrink-0" title="Quantity (Default 1)">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">Qty</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={predefinedStepQty}
+                            onChange={(e) => setPredefinedStepQty(Math.max(1, Number(e.target.value)))}
+                            className="w-12 bg-transparent text-xs text-slate-800 font-bold text-center focus:outline-hidden"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={addPredefinedStep}
@@ -805,6 +837,16 @@ export default function PreQuoteView({
                           onChange={(e) => setCustomStepPrice(e.target.value === '' ? '' : Number(e.target.value))}
                           className="w-20 shrink-0 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-hidden"
                         />
+                        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-2 py-1 shrink-0" title="Quantity (Default 1)">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">Qty</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={customStepQty}
+                            onChange={(e) => setCustomStepQty(Math.max(1, Number(e.target.value)))}
+                            className="w-12 bg-transparent text-xs text-slate-800 font-bold text-center focus:outline-hidden"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={addCustomStep}
@@ -828,48 +870,66 @@ export default function PreQuoteView({
                         <tr className="bg-slate-50 text-slate-400 uppercase font-semibold border-b border-slate-200 text-[9px] tracking-wider">
                           <th className="p-3 pl-4">Step Description</th>
                           <th className="p-3">Source</th>
-                          <th className="p-3 w-32">Price (R)</th>
+                          <th className="p-3 w-20 text-center">Qty</th>
+                          <th className="p-3 w-28">Price/Each (R)</th>
+                          <th className="p-3 w-28 text-right">Subtotal</th>
                           <th className="p-3 text-right pr-4">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {quoteSteps.map((step, idx) => (
-                          <tr key={`${step.stepName}-${idx}`} className="hover:bg-slate-50/40">
-                            <td className="p-3 pl-4 font-medium text-slate-800 text-left">
-                              {step.stepName}
-                            </td>
-                            <td className="p-3 text-left">
-                              {step.isCustom ? (
-                                <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded text-[10px]">Custom</span>
-                              ) : (
-                                <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-[10px]">Pricing Matrix</span>
-                              )}
-                            </td>
-                            <td className="p-3">
-                              <div className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 py-1 max-w-[110px] bg-white">
-                                <span className="text-slate-400 font-semibold font-sans text-xs">R</span>
+                        {quoteSteps.map((step, idx) => {
+                          const qty = step.quantity || 1;
+                          const subtotal = step.price * qty;
+                          return (
+                            <tr key={`${step.stepName}-${idx}`} className="hover:bg-slate-50/40">
+                              <td className="p-3 pl-4 font-medium text-slate-800 text-left">
+                                {step.stepName}
+                              </td>
+                              <td className="p-3 text-left">
+                                {step.isCustom ? (
+                                  <span className="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded text-[10px]">Custom</span>
+                                ) : (
+                                  <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-[10px]">Pricing Matrix</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center">
                                 <input
                                   type="number"
-                                  value={step.price}
-                                  onChange={(e) => handlePriceChange(idx, Number(e.target.value))}
-                                  className="w-full bg-transparent border-0 p-0 text-xs text-slate-700 focus:ring-0 focus:outline-hidden font-bold text-right"
+                                  min="1"
+                                  value={qty}
+                                  onChange={(e) => handleQuantityChange(idx, Number(e.target.value))}
+                                  className="w-14 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 focus:outline-hidden font-bold text-center bg-white"
                                 />
-                              </div>
-                            </td>
-                            <td className="p-3 text-right pr-4">
-                              <button
-                                type="button"
-                                onClick={() => removeStep(idx)}
-                                className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="p-3">
+                                <div className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2 py-1 max-w-[100px] bg-white">
+                                  <span className="text-slate-400 font-semibold font-sans text-xs">R</span>
+                                  <input
+                                    type="number"
+                                    value={step.price}
+                                    onChange={(e) => handlePriceChange(idx, Number(e.target.value))}
+                                    className="w-full bg-transparent border-0 p-0 text-xs text-slate-700 focus:ring-0 focus:outline-hidden font-bold text-right"
+                                  />
+                                </div>
+                              </td>
+                              <td className="p-3 text-right font-bold font-mono text-slate-900">
+                                {formatCurrency(subtotal)}
+                              </td>
+                              <td className="p-3 text-right pr-4">
+                                <button
+                                  type="button"
+                                  onClick={() => removeStep(idx)}
+                                  className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                         {quoteSteps.length === 0 && (
                           <tr>
-                            <td colSpan={4} className="p-6 text-center text-slate-400 italic">
+                            <td colSpan={6} className="p-6 text-center text-slate-400 italic">
                               No repair steps added. Please select matrix steps or add custom ones above.
                             </td>
                           </tr>

@@ -56,6 +56,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           canInspect: false,
           canQuote: false,
           canCreateJobCard: false,
+          canStores: false,
           canClose: false,
           isAdmin: false
         };
@@ -86,6 +87,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             canInspect: true,
             canQuote: true,
             canCreateJobCard: true,
+            canStores: true,
             canClose: true,
             isAdmin: true
           };
@@ -169,7 +171,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       name: 'Sarah Admin (CEO)',
       color: 'bg-slate-800 hover:bg-slate-900 text-white',
       desc: 'Full ERP clearance & Admin panel access',
-      perms: { canReceive: true, canInspect: true, canQuote: true, canCreateJobCard: true, canClose: true, isAdmin: true }
+      perms: { canReceive: true, canInspect: true, canQuote: true, canCreateJobCard: true, canStores: true, canClose: true, isAdmin: true }
     },
     {
       role: 'Receiving Clerk',
@@ -177,7 +179,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       name: 'Dave Receiving',
       color: 'bg-blue-600 hover:bg-blue-700 text-white',
       desc: 'Can only capture incoming deliveries',
-      perms: { canReceive: true, canInspect: false, canQuote: false, canCreateJobCard: false, canClose: false, isAdmin: false }
+      perms: { canReceive: true, canInspect: false, canQuote: false, canCreateJobCard: false, canStores: false, canClose: false, isAdmin: false }
     },
     {
       role: 'QC Inspector',
@@ -185,7 +187,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       name: 'Bob QC Inspector',
       color: 'bg-amber-500 hover:bg-amber-600 text-white',
       desc: 'Can only capture damages and instructions',
-      perms: { canReceive: false, canInspect: true, canQuote: false, canCreateJobCard: false, canClose: false, isAdmin: false }
+      perms: { canReceive: false, canInspect: true, canQuote: false, canCreateJobCard: false, canStores: false, canClose: false, isAdmin: false }
     },
     {
       role: 'Costing Quoter',
@@ -193,23 +195,31 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       name: 'Sarah Costing',
       color: 'bg-purple-600 hover:bg-purple-700 text-white',
       desc: 'Access limited to pricing & quotation matrices',
-      perms: { canReceive: false, canInspect: false, canQuote: true, canCreateJobCard: false, canClose: false, isAdmin: false }
+      perms: { canReceive: false, canInspect: false, canQuote: true, canCreateJobCard: false, canStores: false, canClose: false, isAdmin: false }
     },
     {
-      role: 'Floor Coordinator',
+      role: 'Job Administrator',
       email: 'planner@mesworkshop.com',
       name: 'Marc Planner',
       color: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-      desc: 'Allowed to schedule and create Job Cards only',
-      perms: { canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: true, canClose: false, isAdmin: false }
+      desc: 'Job Admin clearance: Receiving, Inspection, Pre-Quote, Job Cards, Enquiries & Closing',
+      perms: { canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: true, canStores: false, canClose: false, isAdmin: false }
+    },
+    {
+      role: 'Stores Controller',
+      email: 'stores@mesworkshop.com',
+      name: 'Sam Stores Controller',
+      color: 'bg-cyan-600 hover:bg-cyan-700 text-white',
+      desc: 'Stores clearance: manages parts inventory & sign-outs only',
+      perms: { canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: false, canStores: true, canClose: false, isAdmin: false }
     },
     {
       role: 'Quality Manager',
       email: 'closer@mesworkshop.com',
       name: 'James QC Director',
       color: 'bg-rose-600 hover:bg-rose-700 text-white',
-      desc: 'Clearance limited to closing jobs and quality release',
-      perms: { canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: false, canClose: true, isAdmin: false }
+      desc: 'Job Enquiries clearance: view job enquiries and close/release jobs',
+      perms: { canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: false, canStores: false, canClose: true, isAdmin: false }
     }
   ];
 

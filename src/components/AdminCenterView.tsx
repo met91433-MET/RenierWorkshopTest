@@ -15,6 +15,7 @@ import {
   JobCardFormatLabels 
 } from '../types';
 import JobCardDocument from './JobCardDocument';
+import PreQuoteDocumentPreview from './PreQuoteDocumentPreview';
 import MachineCardDocument from './MachineCardDocument';
 import CameraCaptureModal from './CameraCaptureModal';
 import { compressFile } from '../utils/imageCompressor';
@@ -869,6 +870,7 @@ export default function AdminCenterView({
   const [formatConfig, setFormatConfig] = useState<JobCardFormatConfig>(() => {
     return jobCardFormat || DEFAULT_JOB_CARD_FORMAT;
   });
+  const [activeDocLayout, setActiveDocLayout] = useState<'jobCard' | 'preQuote'>('jobCard');
   const [formatSaving, setFormatSaving] = useState(false);
   const [formatSuccessMsg, setFormatSuccessMsg] = useState(false);
   const [previewPage, setPreviewPage] = useState<'page1' | 'page2'>('page1');
@@ -981,16 +983,11 @@ export default function AdminCenterView({
   return (
     <div className="space-y-6" id="admin-center-view-root">
       {/* Page Header */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-800 font-display flex items-center gap-2">
-            <Shield className="w-5 h-5 text-slate-700" />
-            ERP Workshop Administration Center
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Manage user permissions, configure dynamic receiving columns, update customer accounts, and customize repair pricing spreadsheets.
-          </p>
-        </div>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 font-display flex items-center justify-center gap-2">
+          <Shield className="w-6 h-6 text-slate-700" />
+          Admin Center
+        </h1>
       </div>
 
       {/* Admin Subtabs Bar */}
@@ -1048,7 +1045,7 @@ export default function AdminCenterView({
           }`}
         >
           <Layout className="w-4 h-4" />
-          Job Card Format Editor
+          Document Editor
         </button>
       </div>
 
@@ -1088,11 +1085,12 @@ export default function AdminCenterView({
               <thead>
                 <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[9px] border-b border-slate-200">
                   <th className="p-4 pl-6">Operator Account</th>
-                  <th className="p-4 text-center">Job Recv</th>
-                  <th className="p-4 text-center">QC / Inspect</th>
+                  <th className="p-4 text-center">Receiving</th>
+                  <th className="p-4 text-center">Inspection</th>
                   <th className="p-4 text-center">Pre-Quote</th>
-                  <th className="p-4 text-center">Job Cards</th>
-                  <th className="p-4 text-center">Close Job</th>
+                  <th className="p-4 text-center">Job Admin</th>
+                  <th className="p-4 text-center">Stores</th>
+                  <th className="p-4 text-center">Job Enquiries</th>
                   <th className="p-4 text-center">System Admin</th>
                   <th className="p-4 text-right pr-6">Action</th>
                 </tr>
@@ -1153,6 +1151,17 @@ export default function AdminCenterView({
                           disabled={!isEditing}
                           checked={perms.canCreateJobCard}
                           onChange={() => handlePermissionToggle('canCreateJobCard')}
+                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                        />
+                      </td>
+
+                      {/* Stores */}
+                      <td className="p-4 text-center">
+                        <input 
+                          type="checkbox" 
+                          disabled={!isEditing}
+                          checked={Boolean(perms.canStores)}
+                          onChange={() => handlePermissionToggle('canStores')}
                           className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
                         />
                       </td>
@@ -1909,22 +1918,54 @@ export default function AdminCenterView({
       )}
 
       {/* ========================================================
-          TAB 5: JOB CARD FORMAT EDITOR
+          TAB 5: DOCUMENT EDITOR (JOB CARD & PREQUOTE FORMATS)
           ======================================================== */}
       {activeSubTab === 'jobCard' && (
         <div className="space-y-6">
-          {/* Top Bar with Actions */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Top Bar with Layout Options Selector & Actions */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h2 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
-                <Layout className="w-5 h-5 text-blue-600" />
-                Job Card Layout &amp; A4 Portrait Editor
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Customize A4 Portrait format, move logo, adjust line weights and colors, toggle tables/badges, and configure field labels.
+              <div className="flex items-center gap-3">
+                <h2 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                  <Layout className="w-5 h-5 text-blue-600" />
+                  Document Editor
+                </h2>
+
+                {/* Document Type Selector Toggle */}
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocLayout('jobCard')}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                      activeDocLayout === 'jobCard'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    <span>Job Card Layout</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDocLayout('preQuote')}
+                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                      activeDocLayout === 'preQuote'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    <span>PreQuote Layout</span>
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 mt-1">
+                {activeDocLayout === 'jobCard'
+                  ? 'Customize A4 Portrait Job Card layout format, move logo, adjust line weights, toggle tables, and configure field labels.'
+                  : 'Customize official PreQuote document format layout, logo alignment, header branding, and VAT calculation rules.'}
               </p>
             </div>
-            <div className="flex items-center gap-3">
+
+            <div className="flex items-center gap-3 shrink-0">
               <button
                 type="button"
                 onClick={handleResetFormat}
@@ -2065,10 +2106,12 @@ export default function AdminCenterView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Document Title</label>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                        {activeDocLayout === 'jobCard' ? 'Job Card Title' : 'PreQuote Document Title'}
+                      </label>
                       <input
                         type="text"
-                        value={formatConfig.documentTitle}
+                        value={activeDocLayout === 'preQuote' && formatConfig.documentTitle === 'Job Card' ? 'OFFICIAL PRE-QUOTE ESTIMATION' : formatConfig.documentTitle}
                         onChange={(e) => setFormatConfig(prev => ({ ...prev, documentTitle: e.target.value }))}
                         className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
                       />
@@ -2081,7 +2124,9 @@ export default function AdminCenterView({
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
                 <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-blue-600" />
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Line Thickness &amp; Colors</h3>
+                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    {activeDocLayout === 'jobCard' ? 'Line Thickness & Colors' : 'PreQuote Line Weight & Theme'}
+                  </h3>
                 </div>
                 <div className="p-4 space-y-4 text-xs">
                   {/* Border Width Selector */}
@@ -2111,7 +2156,9 @@ export default function AdminCenterView({
                   {/* Accent & Highlights Colors */}
                   <div className="grid grid-cols-2 gap-4 pt-1">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">Accent Color (Job #)</label>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">
+                        {activeDocLayout === 'jobCard' ? 'Accent Color (Job #)' : 'PreQuote Accent Color'}
+                      </label>
                       <div className="flex items-center gap-2">
                         <input
                           type="color"
@@ -2137,47 +2184,55 @@ export default function AdminCenterView({
                     </div>
                   </div>
 
-                  {/* Table Header & Stamp Colors */}
-                  <div className="grid grid-cols-3 gap-3">
-                    <div>
-                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Consumables Bg</label>
-                      <input
-                        type="color"
-                        value={formatConfig.consumablesHeaderBg || '#e0f2fe'}
-                        onChange={(e) => setFormatConfig(prev => ({ ...prev, consumablesHeaderBg: e.target.value }))}
-                        className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
-                      />
+                  {activeDocLayout === 'jobCard' && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Consumables Bg</label>
+                        <input
+                          type="color"
+                          value={formatConfig.consumablesHeaderBg || '#e0f2fe'}
+                          onChange={(e) => setFormatConfig(prev => ({ ...prev, consumablesHeaderBg: e.target.value }))}
+                          className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Outsourcing Bg</label>
+                        <input
+                          type="color"
+                          value={formatConfig.outsourcingHeaderBg || '#fef08a'}
+                          onChange={(e) => setFormatConfig(prev => ({ ...prev, outsourcingHeaderBg: e.target.value }))}
+                          className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Stamp Box Border</label>
+                        <input
+                          type="color"
+                          value={formatConfig.stampBoxBorderColor || '#22c55e'}
+                          onChange={(e) => setFormatConfig(prev => ({ ...prev, stampBoxBorderColor: e.target.value }))}
+                          className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Outsourcing Bg</label>
-                      <input
-                        type="color"
-                        value={formatConfig.outsourcingHeaderBg || '#fef08a'}
-                        onChange={(e) => setFormatConfig(prev => ({ ...prev, outsourcingHeaderBg: e.target.value }))}
-                        className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Stamp Box Border</label>
-                      <input
-                        type="color"
-                        value={formatConfig.stampBoxBorderColor || '#22c55e'}
-                        onChange={(e) => setFormatConfig(prev => ({ ...prev, stampBoxBorderColor: e.target.value }))}
-                        className="w-full h-7 rounded-lg border border-slate-200 cursor-pointer p-0.5"
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
-              {/* Card 3: Element & Badge Toggles */}
+              {/* Card 3: Element & Badge Visibility */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-blue-600" />
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Element &amp; Badge Visibility</h3>
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Eye className="w-4 h-4 text-blue-600" />
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      {activeDocLayout === 'jobCard' ? 'Job Card Badges & Elements' : 'PreQuote Elements & Table Toggles'}
+                    </h3>
+                  </div>
+                  <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                    {activeDocLayout === 'jobCard' ? 'Job Card Mode' : 'PreQuote Mode'}
+                  </span>
                 </div>
                 <div className="p-4 grid grid-cols-2 gap-3 text-xs">
-                  {[
+                  {(activeDocLayout === 'jobCard' ? [
                     { key: 'showSabsBadge', label: 'SABS Quality Badge' },
                     { key: 'showIsoBadge', label: 'ISO 9001 Badge' },
                     { key: 'showAreaBadge', label: 'Workshop AREA Badge' },
@@ -2186,11 +2241,20 @@ export default function AdminCenterView({
                     { key: 'showOutsourcingTable', label: 'Outsourcing Table' },
                     { key: 'showApprovalSignature', label: 'Approval Signature Line' },
                     { key: 'showDueDate', label: 'Due Date Box' }
-                  ].map(item => (
+                  ] : [
+                    { key: 'showCompanyLogo', label: 'Show Company Logo' },
+                    { key: 'showVatSummary', label: 'VAT 15% Total Summary Banner' },
+                    { key: 'showDeliveryNotesList', label: 'Delivery Note(s) Column' },
+                    { key: 'showProcedurePrices', label: 'Repair Procedure Prices' },
+                    { key: 'showEstimatorNotes', label: 'Estimator Note Guidelines' },
+                    { key: 'showValidityPeriod', label: '30-Day Validity Period' },
+                    { key: 'showPropertyDisclaimer', label: 'Sole Property Footer Text' },
+                    { key: 'showQuotationDate', label: 'Quotation Issue Date' }
+                  ]).map(item => (
                     <label key={item.key} className="flex items-center gap-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200/60 cursor-pointer hover:bg-slate-100/80 transition-colors">
                       <input
                         type="checkbox"
-                        checked={Boolean((formatConfig as any)[item.key])}
+                        checked={Boolean((formatConfig as any)[item.key] ?? true)}
                         onChange={(e) => setFormatConfig(prev => ({ ...prev, [item.key]: e.target.checked }))}
                         className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                       />
@@ -2202,94 +2266,169 @@ export default function AdminCenterView({
 
               {/* Card 4: Custom Field Labels */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                  <Type className="w-4 h-4 text-blue-600" />
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Custom Field Labels</h3>
+                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Type className="w-4 h-4 text-blue-600" />
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      {activeDocLayout === 'jobCard' ? 'Job Card Custom Field Labels' : 'PreQuote Field & Column Labels'}
+                    </h3>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-medium">Customize On-Screen Titles</span>
                 </div>
+
                 <div className="p-4 space-y-3 text-xs">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Order # Label</label>
-                      <input
-                        type="text"
-                        value={formatConfig.labels.orderNumber}
-                        onChange={(e) => updateLabel('orderNumber', e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Your Ref. Label</label>
-                      <input
-                        type="text"
-                        value={formatConfig.labels.yourRef}
-                        onChange={(e) => updateLabel('yourRef', e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
+                  {activeDocLayout === 'jobCard' ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Order # Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.orderNumber}
+                            onChange={(e) => updateLabel('orderNumber', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Your Ref. Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.yourRef}
+                            onChange={(e) => updateLabel('yourRef', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Customer Job # Label</label>
-                      <input
-                        type="text"
-                        value={formatConfig.labels.customerJobNumber}
-                        onChange={(e) => updateLabel('customerJobNumber', e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Delivery / RFQ Label</label>
-                      <input
-                        type="text"
-                        value={formatConfig.labels.deliveryNoteNumber}
-                        onChange={(e) => updateLabel('deliveryNoteNumber', e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Customer Job # Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.customerJobNumber}
+                            onChange={(e) => updateLabel('customerJobNumber', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Delivery / RFQ Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.deliveryNoteNumber}
+                            onChange={(e) => updateLabel('deliveryNoteNumber', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status / Tech Label</label>
-                      <input
-                        type="text"
-                        value={formatConfig.labels.leadTechnician}
-                        onChange={(e) => updateLabel('leadTechnician', e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Workshop Area Label</label>
-                      <input
-                        type="text"
-                        value={formatConfig.labels.workshopArea}
-                        onChange={(e) => updateLabel('workshopArea', e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status / Tech Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.leadTechnician}
+                            onChange={(e) => updateLabel('leadTechnician', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Workshop Area Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.workshopArea}
+                            onChange={(e) => updateLabel('workshopArea', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Consumables Title</label>
-                      <input
-                        type="text"
-                        value={formatConfig.labels.consumablesTitle || "Consumables"}
-                        onChange={(e) => updateLabel('consumablesTitle', e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Outsourcing Title</label>
-                      <input
-                        type="text"
-                        value={formatConfig.labels.outsourcingTitle || "Outsourcing"}
-                        onChange={(e) => updateLabel('outsourcingTitle', e.target.value)}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
-                    </div>
-                  </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Consumables Title</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.consumablesTitle || "Consumables"}
+                            onChange={(e) => updateLabel('consumablesTitle', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Outsourcing Title</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.outsourcingTitle || "Outsourcing"}
+                            onChange={(e) => updateLabel('outsourcingTitle', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">PreQuote # Prefix/Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.preQuoteNumberLabel || "PREQUOTE NO:"}
+                            onChange={(e) => updateLabel('preQuoteNumberLabel', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Quotation Date Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.quotationDateLabel || "QUOTATION DATE:"}
+                            onChange={(e) => updateLabel('quotationDateLabel', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Estimator Field Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.estimatorLabel || "ESTIMATOR:"}
+                            onChange={(e) => updateLabel('estimatorLabel', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Validity Period Label</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.validityLabel || "VALIDITY:"}
+                            onChange={(e) => updateLabel('validityLabel', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Repair Scope Col Header</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.repairScopeHeader || "Repair Procedure"}
+                            onChange={(e) => updateLabel('repairScopeHeader', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Customer Price Col Header</label>
+                          <input
+                            type="text"
+                            value={formatConfig.labels.customerPriceHeader || "Customer Price (Incl 15% VAT)"}
+                            onChange={(e) => updateLabel('customerPriceHeader', e.target.value)}
+                            className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -2360,34 +2499,42 @@ export default function AdminCenterView({
                 <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-blue-600" />
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Live A4 Portrait Preview</h3>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      {activeDocLayout === 'jobCard' ? 'Live Job Card A4 Preview' : 'Live PreQuote A4 Preview'}
+                    </h3>
                   </div>
-                  <div className="flex bg-slate-200 p-0.5 rounded-lg text-[10px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewPage('page1')}
-                      className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                        previewPage === 'page1' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      Page 1
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewPage('page2')}
-                      className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                        previewPage === 'page2' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      Page 2
-                    </button>
-                  </div>
+                  {activeDocLayout === 'jobCard' && (
+                    <div className="flex bg-slate-200 p-0.5 rounded-lg text-[10px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewPage('page1')}
+                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                          previewPage === 'page1' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Page 1
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewPage('page2')}
+                        className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                          previewPage === 'page2' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        Page 2
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Simulated A4 Job Card Document */}
+                {/* Simulated A4 Document */}
                 <div className="p-4 bg-slate-200/80 overflow-y-auto max-h-[780px] flex justify-center">
-                  <div className={`w-full transition-all duration-300 ${previewPage === 'page2' ? 'max-w-[760px]' : 'max-w-[580px]'}`}>
-                    <JobCardDocument format={formatConfig} page={previewPage} />
+                  <div className={`w-full transition-all duration-300 ${activeDocLayout === 'jobCard' && previewPage === 'page2' ? 'max-w-[760px]' : 'max-w-[620px]'}`}>
+                    {activeDocLayout === 'jobCard' ? (
+                      <JobCardDocument format={formatConfig} page={previewPage} />
+                    ) : (
+                      <PreQuoteDocumentPreview format={formatConfig} />
+                    )}
                   </div>
                 </div>
               </div>

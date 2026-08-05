@@ -175,14 +175,11 @@ export default function JobCardView({
   return (
     <div className="space-y-6" id="jobcard-view-root">
       {/* Header */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-left">
-        <h1 className="text-xl font-semibold text-slate-800 font-display flex items-center gap-2">
-          <Wrench className="w-5 h-5 text-emerald-500" />
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 font-display flex items-center justify-center gap-2">
+          <Wrench className="w-6 h-6 text-emerald-500" />
           Job Card Creation
         </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Review approved estimate details and convert them into physical or digital workshop job cards, designating technicians and special instructions.
-        </p>
       </div>
 
       {successToast && (

@@ -303,22 +303,11 @@ export default function InspectionView({
   return (
     <div className="space-y-6" id="inspection-view-root">
       {/* Header Banner with Slider Switcher */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-800 font-display flex items-center gap-2">
-            {activeSliderMode === 'pending' ? (
-              <ClipboardCheck className="w-5 h-5 text-amber-500" />
-            ) : (
-              <Camera className="w-5 h-5 text-amber-500" />
-            )}
-            Inspection & Photo Management
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            {activeSliderMode === 'pending' 
-              ? "Stage 2 Inspection: Select a pending component to complete damage findings and advance to Pre-Quote." 
-              : "Upload Photos: Search any job number or customer to upload and organize photos into target folders."}
-          </p>
-        </div>
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-3 text-center">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 font-display flex items-center justify-center gap-2">
+          <ClipboardCheck className="w-6 h-6 text-amber-500" />
+          Inspection
+        </h1>
 
         {/* SLIDER SEGMENTED TOGGLE SWITCH */}
         <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex items-center gap-1 shrink-0">

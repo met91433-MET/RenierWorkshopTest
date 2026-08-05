@@ -286,14 +286,11 @@ export default function ReceivingView({
   return (
     <div className="space-y-6" id="receiving-view-root">
       {/* Page Header */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-800 font-display flex items-center gap-2">
-          <FileSpreadsheet className="w-5 h-5 text-blue-500" />
-          Job Receiving / Delivery Intake
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
+        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 font-display flex items-center justify-center gap-2">
+          <FileSpreadsheet className="w-6 h-6 text-blue-500" />
+          Job Receiving
         </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          Capture incoming repair shipments. Multiple component jobs can be modularly registered under a single Delivery Note.
-        </p>
       </div>
 
       {successMsg && (

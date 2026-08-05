@@ -3,6 +3,7 @@ export interface UserPermissions {
   canInspect: boolean;
   canQuote: boolean;
   canCreateJobCard: boolean;
+  canStores: boolean;
   canClose: boolean;
   isAdmin: boolean;
 }
@@ -156,6 +157,7 @@ export interface JobInspection {
 export interface JobQuoteStep {
   stepName: string;
   price: number;
+  quantity?: number;
   isCustom?: boolean;
 }
 
@@ -213,9 +215,16 @@ export interface Job {
   deliveryNoteNumber: string;
   customerId: string;
   customerName: string;
+  customerBranch?: string;
+  customerOrderNo?: string;
+  purchaseOrderNumber?: string;
   componentType: string;
   modelName: string;
   serialNumber: string;
+  partNumber?: string;
+  customerJobNo?: string;
+  partDescription?: string;
+  qty?: number;
   status: 'Received' | 'Inspected' | 'PreQuoted' | 'JobCardCreated' | 'Closed';
   customFields?: { [columnId: string]: string | number | boolean };
   files?: JobFile[];
