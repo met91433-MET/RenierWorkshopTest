@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Job, JobFile, CustomColumn, ComponentMatrix, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog } from '../types';
+import { Job, JobFile, CustomColumn, ComponentMatrix, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog, getPreQuoteId } from '../types';
 import { getConsumableAllocationLogs } from '../dbService';
 import { compressFile } from '../utils/imageCompressor';
 import JobCardDocument from './JobCardDocument';
 import CameraCaptureModal from './CameraCaptureModal';
+import PreQuoteDocumentModal, { PreQuoteGroup } from './PreQuoteDocumentModal';
 import { openInNewWindow } from '../utils/printDoc';
 import { 
   Archive, 
@@ -71,6 +72,33 @@ export default function JobEnquiriesView({
   // Default filter: 'WaitingGoAhead' (Jobs with job cards waiting for customer's go-ahead / order)
   const [statusFilter, setStatusFilter] = useState<string>('WaitingGoAhead');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedPreQuoteGroup, setSelectedPreQuoteGroup] = useState<PreQuoteGroup | null>(null);
+
+  const handleViewPreQuote = (job: Job) => {
+    const pqId = getPreQuoteId(job, jobs);
+    const relatedJobs = jobs.filter(j => 
+      (j.preQuoteDetails?.preQuoteId && j.preQuoteDetails.preQuoteId === job.preQuoteDetails?.preQuoteId) ||
+      (j.deliveryNoteNumber && j.deliveryNoteNumber === job.deliveryNoteNumber && j.preQuoteDetails)
+    );
+    const groupJobs = relatedJobs.length > 0 ? relatedJobs : [job];
+    const group: PreQuoteGroup = {
+      preQuoteId: pqId,
+      jobs: groupJobs,
+      customerName: job.customerName,
+      deliveryNotes: Array.from(new Set(groupJobs.map(j => j.deliveryNoteNumber).filter(Boolean))),
+      totalCost: groupJobs.reduce((sum, j) => {
+        if (j.preQuoteDetails?.steps && j.preQuoteDetails.steps.length > 0) {
+          return sum + j.preQuoteDetails.steps.reduce((stSum, st) => stSum + (st.price * (st.quantity || 1)), 0);
+        }
+        return sum + (j.preQuoteDetails?.totalCost || 0);
+      }, 0),
+      quotedBy: job.preQuoteDetails?.quotedBy || 'Estimator',
+      quotedAt: job.preQuoteDetails?.quotedAt || job.dateReceived,
+      hasJobCard: Boolean(job.jobCardDetails?.jobCardNumber),
+      jobCardNumbers: groupJobs.map(j => j.jobCardDetails?.jobCardNumber).filter(Boolean) as string[],
+    };
+    setSelectedPreQuoteGroup(group);
+  };
 
   // Modal active sub-tab: 'overview' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'
   const [modalTab, setModalTab] = useState<'overview' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'>('overview');
@@ -749,18 +777,6 @@ export default function JobEnquiriesView({
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-
-                        {/* Close / Sign Off */}
-                        {job.status === 'JobCardCreated' && (
-                          <button
-                            onClick={() => handleSelectJob(job, 'close')}
-                            className="p-1.5 text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors font-bold text-[10px] px-2 py-1 flex items-center gap-1 cursor-pointer"
-                            title="Close & Sign Off Job"
-                          >
-                            <Lock className="w-3 h-3" />
-                            <span>Close</span>
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -1080,14 +1096,28 @@ export default function JobEnquiriesView({
                     {/* STAGE 3: ESTIMATING / PRE-QUOTE */}
                     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
                       <div>
-                        <div className="flex items-center gap-2 border-b border-slate-100 pb-3 mb-3">
-                          <div className="bg-purple-50 p-1.5 rounded-lg text-purple-600">
-                            <Calculator className="w-4 h-4" />
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="bg-purple-50 p-1.5 rounded-lg text-purple-600">
+                              <Calculator className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Stage 3</h4>
+                              <h3 className="text-xs font-bold text-slate-800">Pre-Quote Estimation</h3>
+                            </div>
                           </div>
-                          <div>
-                            <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Stage 3</h4>
-                            <h3 className="text-xs font-bold text-slate-800">Pre-Quote Estimation</h3>
-                          </div>
+
+                          {(selectedJob.preQuoteDetails || selectedJob.status === 'PreQuoted' || selectedJob.status === 'JobCardCreated' || selectedJob.status === 'Closed') && (
+                            <button
+                              type="button"
+                              onClick={() => handleViewPreQuote(selectedJob)}
+                              className="text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-1.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                              title="View Pre-Quote Document"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-purple-600" />
+                              <span>View Pre-Quote</span>
+                            </button>
+                          )}
                         </div>
 
                         {selectedJob.preQuoteDetails && selectedJob.preQuoteDetails.steps ? (
@@ -2170,7 +2200,7 @@ export default function JobEnquiriesView({
 
             {/* Modal Footer */}
             <div className="p-4 border-t border-slate-200 bg-slate-100 flex justify-between items-center flex-shrink-0">
-              <div>
+              <div className="flex items-center gap-2">
                 {selectedJob.status !== 'Closed' && (
                   <button
                     type="button"
@@ -2185,6 +2215,21 @@ export default function JobEnquiriesView({
                   >
                     <CheckCircle2 className="w-4 h-4" />
                     {!hasGoAhead(selectedJob) ? 'Add to Go-Ahead' : 'Go-Ahead Order Info'}
+                  </button>
+                )}
+
+                {selectedJob.status !== 'Closed' && (
+                  <button
+                    type="button"
+                    onClick={() => setModalTab('close')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                      modalTab === 'close'
+                        ? 'bg-indigo-700 text-white shadow-xs ring-2 ring-indigo-400/50'
+                        : 'bg-slate-800 hover:bg-slate-900 text-white font-bold shadow-sm'
+                    }`}
+                  >
+                    <Lock className="w-4 h-4 text-indigo-300" />
+                    <span>Close Job</span>
                   </button>
                 )}
               </div>
@@ -2348,6 +2393,12 @@ export default function JobEnquiriesView({
             </div>
           </div>
         </div>
+      )}
+      {selectedPreQuoteGroup && (
+        <PreQuoteDocumentModal
+          group={selectedPreQuoteGroup}
+          onClose={() => setSelectedPreQuoteGroup(null)}
+        />
       )}
     </div>
   );
