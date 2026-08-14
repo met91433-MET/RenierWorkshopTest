@@ -12,7 +12,8 @@ import {
   JobCardFormatConfig,
   DEFAULT_JOB_CARD_FORMAT,
   JobCardSectionConfig,
-  JobCardFormatLabels 
+  JobCardFormatLabels,
+  formatMachineDisplayName
 } from '../types';
 import JobCardDocument from './JobCardDocument';
 import PreQuoteDocumentPreview from './PreQuoteDocumentPreview';
@@ -1090,6 +1091,7 @@ export default function AdminCenterView({
                   <th className="p-4 text-center">Pre-Quote</th>
                   <th className="p-4 text-center">Job Admin</th>
                   <th className="p-4 text-center">Stores</th>
+                  <th className="p-4 text-center">Worksheet</th>
                   <th className="p-4 text-center">Job Enquiries</th>
                   <th className="p-4 text-center">System Admin</th>
                   <th className="p-4 text-right pr-6">Action</th>
@@ -1162,6 +1164,17 @@ export default function AdminCenterView({
                           disabled={!isEditing}
                           checked={Boolean(perms.canStores)}
                           onChange={() => handlePermissionToggle('canStores')}
+                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                        />
+                      </td>
+
+                      {/* Worksheet */}
+                      <td className="p-4 text-center">
+                        <input 
+                          type="checkbox" 
+                          disabled={!isEditing}
+                          checked={perms.canWorksheet !== false}
+                          onChange={() => handlePermissionToggle('canWorksheet')}
                           className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
                         />
                       </td>
@@ -2716,7 +2729,7 @@ export default function AdminCenterView({
               <h3 className="text-base font-extrabold text-slate-900">Delete Machine Record</h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Are you sure you want to permanently delete <strong className="text-slate-900">{machineToDelete.machineName}</strong> (SN: {machineToDelete.serialNumber})? This action cannot be undone.
+              Are you sure you want to permanently delete <strong className="text-slate-900">{formatMachineDisplayName(machineToDelete)}</strong>? This action cannot be undone.
             </p>
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button

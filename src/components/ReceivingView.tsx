@@ -213,16 +213,16 @@ export default function ReceivingView({
       const jobsToSave: Job[] = jobItems.map((item, idx) => {
         const jobId = generateNextComponentId(existingJobs, idx);
 
-        // Tag delivery level files (document upload) explicitly as 'delivery' category
+        // Tag delivery level files (document upload) explicitly as 'paperwork' category
         const taggedDeliveryFiles = deliveryFiles.map(f => ({
           ...f,
-          category: 'delivery' as const
+          category: 'paperwork' as const
         }));
 
-        // Tag job component files as 'job' category if not already set
+        // Tag job component files as 'component' category if not already set
         const taggedJobFiles = item.files.map(f => ({
           ...f,
-          category: f.category || ('job' as const)
+          category: f.category || ('component' as const)
         }));
 
         const combinedFiles = deduplicateJobFiles([...taggedDeliveryFiles, ...taggedJobFiles]);

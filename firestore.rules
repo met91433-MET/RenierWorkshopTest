@@ -53,12 +53,22 @@ service cloud.firestore {
       allow write: if isAuthenticated();
     }
 
+    match /tool_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
     match /consumables/{consumableId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }
 
     match /consumable_allocations/{allocationId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    match /worksheet_entries/{entryId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }

@@ -8,10 +8,11 @@ import {
   deleteDoc, 
   query, 
   where,
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Customer, Machine, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, ToolStockItem, ConsumableItem, ConsumableAllocationLog } from './types';
+import { Customer, Machine, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, ToolStockItem, ConsumableItem, ConsumableAllocationLog, ToolLog, WorksheetEntry } from './types';
 import { sanitizeJobForFirestoreAsync, compressDataUrl } from './utils/imageCompressor';
 
 export enum OperationType {
@@ -412,7 +413,8 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
         {
           id: 'mach-haas-01',
           machineName: '5-Axis CNC Milling Center',
-          serialNumber: 'MC-2024-8891',
+          serialNumber: 'M1',
+          machineType: 'CNC Milling Center',
           model: 'VF-4SS',
           make: 'Haas Automation',
           customerName: 'Caterpillar Mining Division',
@@ -431,7 +433,8 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
         {
           id: 'mach-cat-02',
           machineName: 'CAT 777D Heavy Haul Spindle Rig',
-          serialNumber: '777D-SP-4402',
+          serialNumber: 'M2',
+          machineType: 'Compressor',
           model: '777D Series',
           make: 'Caterpillar',
           customerName: 'Anglo American Plat Reef',
@@ -632,6 +635,34 @@ export async function deleteConsumableAllocationLog(id: string): Promise<void> {
   }
 }
 
+export async function getToolLogs(): Promise<ToolLog[]> {
+  try {
+    const snapshot = await getDocs(collection(db, 'tool_logs'));
+    const list: ToolLog[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as ToolLog);
+    });
+    return list.sort((a, b) => new Date(b.actionDate).getTime() - new Date(a.actionDate).getTime());
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'tool_logs');
+    return [];
+  }
+}
+
+export async function saveToolLog(log: ToolLog): Promise<void> {
+  await setDoc(doc(db, 'tool_logs', log.id), {
+    ...log
+  });
+}
+
+export async function deleteToolLog(id: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'tool_logs', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `tool_logs/${id}`);
+  }
+}
+
 export async function seedStoresDataIfEmpty(): Promise<void> {
   try {
     const toolsSnap = await getDocs(collection(db, 'tool_stock'));
@@ -795,8 +826,272 @@ export async function seedStoresDataIfEmpty(): Promise<void> {
         await setDoc(doc(db, 'consumable_allocations', alloc.id), alloc);
       }
     }
+
+    const toolLogsSnap = await getDocs(collection(db, 'tool_logs'));
+    if (toolLogsSnap.empty) {
+      const defaultToolLogs: ToolLog[] = [
+        {
+          id: 'tlog-001',
+          toolId: 'tool-002',
+          toolDescription: 'Digital Micrometer 0-25mm',
+          toolTypeSize: '0.001mm High Precision',
+          action: 'Signed Out',
+          clockNumber: 'CLK-104',
+          actionDate: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
+          loggedBy: 'Stores Operator'
+        },
+        {
+          id: 'tlog-002',
+          toolId: 'tool-004',
+          toolDescription: 'Angle Grinder 125mm Heavy Duty',
+          toolTypeSize: '1000W 220V Corded',
+          action: 'Signed Out',
+          clockNumber: 'CLK-208',
+          actionDate: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+          loggedBy: 'Stores Operator'
+        },
+        {
+          id: 'tlog-003',
+          toolId: 'tool-001',
+          toolDescription: 'Pneumatic Impact Wrench 1/2"',
+          toolTypeSize: 'Heavy Duty 1/2 Sq Dr',
+          action: 'Returned',
+          clockNumber: 'Stores',
+          actionDate: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
+          loggedBy: 'Stores Operator'
+        }
+      ];
+
+      for (const tlog of defaultToolLogs) {
+        await setDoc(doc(db, 'tool_logs', tlog.id), tlog);
+      }
+    }
   } catch (err) {
     console.error("Error seeding stores data:", err);
   }
 }
+
+// ==========================================
+// 9. REAL-TIME AUTO-SYNC SUBSCRIPTIONS
+// ==========================================
+
+export function subscribeJobs(onUpdate: (jobs: Job[]) => void): () => void {
+  const path = 'jobs';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: Job[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as Job);
+    });
+    onUpdate(list);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeCustomers(onUpdate: (customers: Customer[]) => void): () => void {
+  const path = 'customers';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: Customer[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as Customer);
+    });
+    onUpdate(list);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeMachines(onUpdate: (machines: Machine[]) => void): () => void {
+  const path = 'machines';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: Machine[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as Machine);
+    });
+    onUpdate(list);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeComponentMatrices(onUpdate: (matrices: ComponentMatrix[]) => void): () => void {
+  const path = 'components';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: ComponentMatrix[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as ComponentMatrix);
+    });
+    onUpdate(list);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeCustomColumns(onUpdate: (cols: CustomColumn[]) => void): () => void {
+  const path = `config/${CONFIG_DOC_ID}`;
+  return onSnapshot(doc(db, 'config', CONFIG_DOC_ID), (snapshot) => {
+    if (snapshot.exists()) {
+      const cols = (snapshot.data().customColumns as CustomColumn[]) || [];
+      onUpdate(cols.filter(c => c.id !== 'damage_severity' && c.label !== 'Damage Severity Level'));
+    }
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeJobCardFormatConfig(onUpdate: (config: JobCardFormatConfig) => void): () => void {
+  const path = `config/${JOB_CARD_FORMAT_DOC_ID}`;
+  return onSnapshot(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), (snapshot) => {
+    if (snapshot.exists()) {
+      const data = snapshot.data() as JobCardFormatConfig;
+      const merged: JobCardFormatConfig = {
+        ...DEFAULT_JOB_CARD_FORMAT,
+        ...data,
+        labels: {
+          ...DEFAULT_JOB_CARD_FORMAT.labels,
+          ...(data.labels || {})
+        },
+        sections: data.sections && data.sections.length > 0 ? data.sections : DEFAULT_JOB_CARD_FORMAT.sections
+      };
+      try {
+        localStorage.setItem(FORMAT_STORAGE_KEY, JSON.stringify(merged));
+      } catch (e) {
+        // ignore localStorage write errors
+      }
+      onUpdate(merged);
+    }
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeUsers(onUpdate: (users: UserProfile[]) => void): () => void {
+  const path = 'users';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: UserProfile[] = [];
+    snapshot.forEach(doc => {
+      list.push(doc.data() as UserProfile);
+    });
+    onUpdate(list);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeToolStockItems(onUpdate: (tools: ToolStockItem[]) => void): () => void {
+  const path = 'tool_stock';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: ToolStockItem[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as ToolStockItem);
+    });
+    onUpdate(list);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeConsumableItems(onUpdate: (items: ConsumableItem[]) => void): () => void {
+  const path = 'consumables';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: ConsumableItem[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as ConsumableItem);
+    });
+    onUpdate(list);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeConsumableAllocationLogs(onUpdate: (logs: ConsumableAllocationLog[]) => void): () => void {
+  const path = 'consumable_allocations';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: ConsumableAllocationLog[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as ConsumableAllocationLog);
+    });
+    const sorted = list.sort((a, b) => new Date(b.allocatedAt).getTime() - new Date(a.allocatedAt).getTime());
+    onUpdate(sorted);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export function subscribeToolLogs(onUpdate: (logs: ToolLog[]) => void): () => void {
+  const path = 'tool_logs';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: ToolLog[] = [];
+    snapshot.forEach(doc => {
+      list.push({ id: doc.id, ...doc.data() } as ToolLog);
+    });
+    const sorted = list.sort((a, b) => new Date(b.actionDate).getTime() - new Date(a.actionDate).getTime());
+    onUpdate(sorted);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+// ==========================================
+// 9. WORKSHEET DASHBOARD SERVICE
+// ==========================================
+
+export async function getWorksheetEntries(): Promise<WorksheetEntry[]> {
+  try {
+    const snapshot = await getDocs(collection(db, 'worksheet_entries'));
+    const list: WorksheetEntry[] = [];
+    snapshot.forEach(docSnap => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as WorksheetEntry);
+    });
+    return list.sort((a, b) => {
+      const dateDiff = new Date(b.jobDate).getTime() - new Date(a.jobDate).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return (b.pageNumber || 0) - (a.pageNumber || 0);
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'worksheet_entries');
+    return [];
+  }
+}
+
+export async function saveWorksheetEntry(entry: WorksheetEntry): Promise<void> {
+  const path = `worksheet_entries/${entry.id}`;
+  try {
+    await setDoc(doc(db, 'worksheet_entries', entry.id), {
+      ...entry,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+export async function deleteWorksheetEntry(id: string): Promise<void> {
+  const path = `worksheet_entries/${id}`;
+  try {
+    await deleteDoc(doc(db, 'worksheet_entries', id));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export function subscribeWorksheetEntries(onUpdate: (entries: WorksheetEntry[]) => void): () => void {
+  const path = 'worksheet_entries';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: WorksheetEntry[] = [];
+    snapshot.forEach(docSnap => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as WorksheetEntry);
+    });
+    const sorted = list.sort((a, b) => {
+      const dateDiff = new Date(b.jobDate).getTime() - new Date(a.jobDate).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return (b.pageNumber || 0) - (a.pageNumber || 0);
+    });
+    onUpdate(sorted);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+
 

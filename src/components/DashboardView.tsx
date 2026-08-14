@@ -26,10 +26,12 @@ import {
   Calculator,
   Eye,
   Printer,
-  Mail
+  Mail,
+  BookOpen
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import StoresDashboardView from './StoresDashboardView';
+import WorksheetDashboardView from './WorksheetDashboardView';
 import PreQuoteDocumentModal, { PreQuoteGroup } from './PreQuoteDocumentModal';
 
 interface DashboardViewProps {
@@ -38,6 +40,7 @@ interface DashboardViewProps {
   currentUser: UserProfile | null;
   onSelectJob: (job: Job, targetTab: string) => void;
   onNavigateToStores?: () => void;
+  onSaveMachine?: (machine: Machine) => Promise<void> | void;
 }
 
 export default function DashboardView({ 
@@ -45,25 +48,28 @@ export default function DashboardView({
   machines = [],
   currentUser, 
   onSelectJob,
-  onNavigateToStores
+  onNavigateToStores,
+  onSaveMachine
 }: DashboardViewProps) {
   // Check permission access for each dashboard mode on the slider
   const canAccessIncoming = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canReceive);
   const canAccessJobCards = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canCreateJobCard);
   const canAccessPreQuote = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canQuote);
   const canAccessStores = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canStores);
+  const canAccessWorksheet = Boolean(!currentUser || currentUser.permissions?.isAdmin || currentUser.permissions?.canWorksheet !== false);
 
   const allowedModes = useMemo(() => {
-    const modes: ('incoming' | 'jobcards' | 'prequote' | 'stores')[] = [];
+    const modes: ('incoming' | 'jobcards' | 'prequote' | 'stores' | 'worksheet')[] = [];
     if (canAccessIncoming) modes.push('incoming');
     if (canAccessJobCards) modes.push('jobcards');
     if (canAccessPreQuote) modes.push('prequote');
     if (canAccessStores) modes.push('stores');
+    if (canAccessWorksheet) modes.push('worksheet');
     return modes.length > 0 ? modes : ['incoming'];
-  }, [canAccessIncoming, canAccessJobCards, canAccessPreQuote, canAccessStores]);
+  }, [canAccessIncoming, canAccessJobCards, canAccessPreQuote, canAccessStores, canAccessWorksheet]);
 
-  // Mode Switcher: 'incoming' (View 1: Receiving Dashboard), 'jobcards' (View 2: Jobs Dashboard), 'prequote' (View 3: PreQuote Dashboard), 'stores' (View 4: Stores Dashboard)
-  const [activeDashboardMode, setActiveDashboardMode] = useState<'incoming' | 'jobcards' | 'prequote' | 'stores'>(allowedModes[0]);
+  // Mode Switcher: 'incoming' (View 1: Receiving Dashboard), 'jobcards' (View 2: Jobs Dashboard), 'prequote' (View 3: PreQuote Dashboard), 'stores' (View 4: Stores Dashboard), 'worksheet' (View 5: Worksheet Dashboard)
+  const [activeDashboardMode, setActiveDashboardMode] = useState<'incoming' | 'jobcards' | 'prequote' | 'stores' | 'worksheet'>(allowedModes[0]);
 
   // Ensure active dashboard mode is always valid for the logged-in user's clearance
   useEffect(() => {
@@ -86,7 +92,7 @@ export default function DashboardView({
   }, [activeDashboardMode, searchTerm, statusFilter, itemsPerPage]);
 
   // Reset status filter dropdown when mode changes
-  const handleSwitchMode = (mode: 'incoming' | 'jobcards' | 'prequote' | 'stores') => {
+  const handleSwitchMode = (mode: 'incoming' | 'jobcards' | 'prequote' | 'stores' | 'worksheet') => {
     setActiveDashboardMode(mode);
     setStatusFilter('All');
     setSearchTerm('');
@@ -340,6 +346,21 @@ export default function DashboardView({
             >
               <Boxes className="w-4 h-4 text-blue-200" />
               <span>Stores Dashboard</span>
+            </button>
+          )}
+
+          {/* View 5 Button: Worksheet Dashboard */}
+          {canAccessWorksheet && (
+            <button
+              onClick={() => handleSwitchMode('worksheet')}
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                activeDashboardMode === 'worksheet'
+                  ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-700/20'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-indigo-200" />
+              <span>Worksheet Dashboard</span>
             </button>
           )}
         </div>
@@ -1178,6 +1199,23 @@ export default function DashboardView({
           transition={{ duration: 0.2 }}
         >
           <StoresDashboardView currentUser={currentUser} jobs={jobs} machines={machines} />
+        </motion.div>
+      )}
+
+      {/* ==================== VIEW 5: WORKSHEET DASHBOARD ==================== */}
+      {activeDashboardMode === 'worksheet' && (
+        <motion.div 
+          initial={{ opacity: 0, y: 6 }} 
+          animate={{ opacity: 1, y: 0 }} 
+          transition={{ duration: 0.2 }}
+        >
+          <WorksheetDashboardView
+            jobs={jobs}
+            machines={machines}
+            currentUser={currentUser}
+            onSaveMachine={onSaveMachine}
+            onSelectJob={(job) => onSelectJob(job, 'enquiries')}
+          />
         </motion.div>
       )}
 

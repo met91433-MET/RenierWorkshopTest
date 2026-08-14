@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Machine, Job, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, MachineTimesheetBook } from '../types';
+import { Machine, Job, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, MachineTimesheetBook, formatMachineDisplayName } from '../types';
 import { openInNewWindow } from '../utils/printDoc';
 import { 
   Wrench, 
@@ -251,7 +251,7 @@ export default function MachineCardDocument({
             <div class="grid grid-cols-2 gap-4 border border-black p-4 bg-slate-50">
               <div>
                 <p class="text-[10px] uppercase font-bold text-slate-500">Machine Name / Equipment</p>
-                <p class="text-base font-black text-slate-900">${currentMachine.machineName}</p>
+                <p class="text-base font-black text-slate-900">${formatMachineDisplayName(currentMachine)}</p>
               </div>
               <div>
                 <p class="text-[10px] uppercase font-bold text-slate-500">Machine Number</p>
@@ -375,7 +375,7 @@ export default function MachineCardDocument({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-extrabold text-white">{machine.machineName}</h2>
+                <h2 className="text-base font-extrabold text-white">{formatMachineDisplayName(machine)}</h2>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusBadge(machine.status)}`}>
                   {machine.status || 'Active'}
                 </span>
@@ -993,7 +993,7 @@ export default function MachineCardDocument({
               <h3 className="text-base font-extrabold text-slate-900">Delete Equipment Record</h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Are you sure you want to permanently delete machine equipment <strong className="text-slate-900">{machine.machineName}</strong> (SN: {machine.serialNumber})?
+              Are you sure you want to permanently delete machine equipment <strong className="text-slate-900">{formatMachineDisplayName(machine)}</strong>?
             </p>
             <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
               <button

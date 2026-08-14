@@ -1,9 +1,12 @@
 import { useState, useEffect, FormEvent } from 'react';
-import { ToolStockItem, ConsumableItem, ConsumableAllocationLog, UserProfile, Job, Machine } from '../types';
+import { ToolStockItem, ConsumableItem, ConsumableAllocationLog, ToolLog, UserProfile, Job, Machine, formatMachineDisplayName, getMachineLabelByIdOrNumber } from '../types';
 import { 
   getToolStockItems, 
   saveToolStockItem, 
   deleteToolStockItem,
+  getToolLogs,
+  saveToolLog,
+  deleteToolLog,
   getConsumableItems, 
   saveConsumableItem, 
   deleteConsumableItem,
@@ -11,7 +14,11 @@ import {
   saveConsumableAllocationLog,
   deleteConsumableAllocationLog,
   getJobs,
-  getMachines
+  getMachines,
+  subscribeToolStockItems,
+  subscribeToolLogs,
+  subscribeConsumableItems,
+  subscribeConsumableAllocationLogs
 } from '../dbService';
 import { 
   Wrench, 
@@ -43,11 +50,12 @@ interface StoresDashboardViewProps {
 }
 
 export default function StoresDashboardView({ currentUser, jobs = [], machines = [] }: StoresDashboardViewProps) {
-  // Slider / Switcher Mode: 'tools' | 'consumables' | 'log'
-  const [activeStoresMode, setActiveStoresMode] = useState<'tools' | 'consumables' | 'log'>('tools');
+  // Slider / Switcher Mode: 'tools' | 'tools_log' | 'consumables' | 'log'
+  const [activeStoresMode, setActiveStoresMode] = useState<'tools' | 'tools_log' | 'consumables' | 'log'>('tools');
 
   // Core Data State
   const [tools, setTools] = useState<ToolStockItem[]>([]);
+  const [toolLogs, setToolLogs] = useState<ToolLog[]>([]);
   const [consumables, setConsumables] = useState<ConsumableItem[]>([]);
   const [allocationLogs, setAllocationLogs] = useState<ConsumableAllocationLog[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -118,34 +126,61 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
 
   // 5. Delete Confirmation Modal
   const [deleteTarget, setDeleteTarget] = useState<{
-    type: 'tool' | 'consumable' | 'log';
+    type: 'tool' | 'consumable' | 'log' | 'tool_log';
     id: string;
     description: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Load All Stores Data
+  // Load & Auto-Sync All Stores Data
+  useEffect(() => {
+    setLoading(true);
+    const unsubs: (() => void)[] = [];
+
+    unsubs.push(subscribeToolStockItems((fetchedTools) => {
+      setTools(fetchedTools);
+      setLoading(false);
+    }));
+
+    unsubs.push(subscribeToolLogs((fetchedToolLogs) => {
+      setToolLogs(fetchedToolLogs);
+      setLoading(false);
+    }));
+
+    unsubs.push(subscribeConsumableItems((fetchedConsumables) => {
+      setConsumables(fetchedConsumables);
+      setLoading(false);
+    }));
+
+    unsubs.push(subscribeConsumableAllocationLogs((fetchedLogs) => {
+      setAllocationLogs(fetchedLogs);
+      setLoading(false);
+    }));
+
+    return () => {
+      unsubs.forEach(unsub => unsub());
+    };
+  }, []);
+
   const loadStoresData = async () => {
     setLoading(true);
     try {
-      const [fetchedTools, fetchedConsumables, fetchedLogs] = await Promise.all([
+      const [fetchedTools, fetchedToolLogs, fetchedConsumables, fetchedLogs] = await Promise.all([
         getToolStockItems(),
+        getToolLogs(),
         getConsumableItems(),
         getConsumableAllocationLogs()
       ]);
       setTools(fetchedTools);
+      setToolLogs(fetchedToolLogs);
       setConsumables(fetchedConsumables);
       setAllocationLogs(fetchedLogs);
     } catch (err) {
-      console.error("Error loading stores data:", err);
+      console.error("Failed to load stores data:", err);
     } finally {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    loadStoresData();
-  }, []);
 
   // ---------------- SCREEN 1: TOOL STOCK ACTIONS ----------------
   // Open modal to sign out a tool
@@ -173,12 +208,27 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
       updatedAt: new Date().toISOString()
     };
 
+    const newLog: ToolLog = {
+      id: `tlog-${Date.now()}`,
+      toolId: selectedToolForSignOut.id,
+      toolDescription: selectedToolForSignOut.description,
+      toolTypeSize: selectedToolForSignOut.typeSize,
+      action: 'Signed Out',
+      clockNumber: toolClockNumber.trim().toUpperCase(),
+      actionDate: new Date().toISOString(),
+      loggedBy: currentUser?.displayName || currentUser?.email || 'Stores Controller'
+    };
+
     // Optimistic UI update
     setTools(prev => prev.map(t => t.id === updatedTool.id ? updatedTool : t));
+    setToolLogs(prev => [newLog, ...prev]);
     setSelectedToolForSignOut(null);
 
     try {
-      await saveToolStockItem(updatedTool);
+      await Promise.all([
+        saveToolStockItem(updatedTool),
+        saveToolLog(newLog)
+      ]);
     } catch (err) {
       console.error("Error signing out tool:", err);
     }
@@ -196,11 +246,26 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
       updatedAt: new Date().toISOString()
     };
 
+    const newLog: ToolLog = {
+      id: `tlog-${Date.now()}`,
+      toolId: tool.id,
+      toolDescription: tool.description,
+      toolTypeSize: tool.typeSize,
+      action: 'Returned',
+      clockNumber: tool.employeeNumber || 'Stores',
+      actionDate: new Date().toISOString(),
+      loggedBy: currentUser?.displayName || currentUser?.email || 'Stores Controller'
+    };
+
     // Optimistic UI update
     setTools(prev => prev.map(t => t.id === updatedTool.id ? updatedTool : t));
+    setToolLogs(prev => [newLog, ...prev]);
 
     try {
-      await saveToolStockItem(updatedTool);
+      await Promise.all([
+        saveToolStockItem(updatedTool),
+        saveToolLog(newLog)
+      ]);
     } catch (err) {
       console.error("Error returning tool:", err);
     }
@@ -227,14 +292,29 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
       createdAt: new Date().toISOString()
     };
 
+    const newLog: ToolLog = {
+      id: `tlog-${Date.now()}`,
+      toolId: newTool.id,
+      toolDescription: newTool.description,
+      toolTypeSize: newTool.typeSize,
+      action: 'Added',
+      clockNumber: 'Stores',
+      actionDate: new Date().toISOString(),
+      loggedBy: currentUser?.displayName || currentUser?.email || 'Stores Controller'
+    };
+
     setTools(prev => [newTool, ...prev]);
+    setToolLogs(prev => [newLog, ...prev]);
     setIsAddToolOpen(false);
     setNewToolDesc('');
     setNewToolTypeSize('');
     setNewToolQty(1);
 
     try {
-      await saveToolStockItem(newTool);
+      await Promise.all([
+        saveToolStockItem(newTool),
+        saveToolLog(newLog)
+      ]);
     } catch (err) {
       console.error("Error adding tool:", err);
     }
@@ -264,6 +344,14 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
     });
   };
 
+  const handleRequestDeleteToolLog = (log: ToolLog) => {
+    setDeleteTarget({
+      type: 'tool_log',
+      id: log.id,
+      description: `${log.toolDescription} (${log.action} by ${log.clockNumber || 'Stores'})`
+    });
+  };
+
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
@@ -271,6 +359,21 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
 
     try {
       if (type === 'tool') {
+        const deletedTool = tools.find(t => t.id === id);
+        if (deletedTool) {
+          const newLog: ToolLog = {
+            id: `tlog-${Date.now()}`,
+            toolId: deletedTool.id,
+            toolDescription: deletedTool.description,
+            toolTypeSize: deletedTool.typeSize,
+            action: 'Deleted',
+            clockNumber: 'Stores',
+            actionDate: new Date().toISOString(),
+            loggedBy: currentUser?.displayName || currentUser?.email || 'Stores Controller'
+          };
+          setToolLogs(prev => [newLog, ...prev]);
+          saveToolLog(newLog).catch(console.error);
+        }
         setTools(prev => prev.filter(t => t.id !== id));
         await deleteToolStockItem(id);
       } else if (type === 'consumable') {
@@ -279,6 +382,9 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
       } else if (type === 'log') {
         setAllocationLogs(prev => prev.filter(l => l.id !== id));
         await deleteConsumableAllocationLog(id);
+      } else if (type === 'tool_log') {
+        setToolLogs(prev => prev.filter(tl => tl.id !== id));
+        await deleteToolLog(id);
       }
     } catch (err) {
       console.error("Error executing delete:", err);
@@ -413,6 +519,16 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
       (l.machineNumber && l.machineNumber.toLowerCase().includes(q));
   });
 
+  const filteredToolLogs = toolLogs.filter(tl => {
+    const q = searchTerm.toLowerCase();
+    return !q ||
+      tl.toolDescription.toLowerCase().includes(q) ||
+      tl.toolTypeSize.toLowerCase().includes(q) ||
+      (tl.clockNumber && tl.clockNumber.toLowerCase().includes(q)) ||
+      tl.action.toLowerCase().includes(q) ||
+      (tl.loggedBy && tl.loggedBy.toLowerCase().includes(q));
+  });
+
   // KPI calculations
   const totalToolsCount = tools.length;
   const signedOutToolsCount = tools.filter(t => t.status === 'Signed Out').length;
@@ -433,7 +549,7 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
 
         {/* STORES TOP SLIDER SWITCHER */}
         <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap sm:flex-nowrap items-center gap-1 shrink-0">
-          {/* Screen 1: Tools Stock */}
+          {/* Option 1: Tools Stock */}
           <button
             onClick={() => { setActiveStoresMode('tools'); setSearchTerm(''); }}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
@@ -451,7 +567,25 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
             </span>
           </button>
 
-          {/* Screen 2: All Consumables */}
+          {/* Option 2: Tools Log */}
+          <button
+            onClick={() => { setActiveStoresMode('tools_log'); setSearchTerm(''); }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              activeStoresMode === 'tools_log'
+                ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-700/20'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4 text-indigo-200" />
+            <span>Tools Log</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+              activeStoresMode === 'tools_log' ? 'bg-indigo-800 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {toolLogs.length}
+            </span>
+          </button>
+
+          {/* Option 3: All Consumables */}
           <button
             onClick={() => { setActiveStoresMode('consumables'); setSearchTerm(''); }}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
@@ -469,7 +603,7 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
             </span>
           </button>
 
-          {/* Screen 3: Consumables Log */}
+          {/* Option 4: Consumables Log */}
           <button
             onClick={() => { setActiveStoresMode('log'); setSearchTerm(''); }}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
@@ -498,6 +632,8 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
             placeholder={
               activeStoresMode === 'tools' 
                 ? "Search tools by description, clock #, status..." 
+                : activeStoresMode === 'tools_log'
+                ? "Search tools log by description, clock #, action..."
                 : activeStoresMode === 'consumables'
                 ? "Search consumables..."
                 : "Search logs by clock #, job #, machine #..."
@@ -691,7 +827,106 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
       )}
 
       {/* ===================================================================== */}
-      {/* SCREEN 2: ALL CONSUMABLES LIST                                        */}
+      {/* SCREEN 2: TOOLS LOG                                                   */}
+      {/* ===================================================================== */}
+      {activeStoresMode === 'tools_log' && (
+        <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-indigo-600" />
+                Tools Log
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Audit trail of all tool sign-outs, returns, additions, and deletions.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-extrabold uppercase tracking-wider text-[11px]">
+                    <th className="p-3.5 pl-5">Date &amp; Time</th>
+                    <th className="p-3.5">Tool Description</th>
+                    <th className="p-3.5">Type / Size</th>
+                    <th className="p-3.5 text-center">Action</th>
+                    <th className="p-3.5">Clock # / Employee</th>
+                    <th className="p-3.5">Logged By</th>
+                    <th className="p-3.5 pr-5 text-right">Delete</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 font-medium">
+                  {filteredToolLogs.length > 0 ? (
+                    filteredToolLogs.map((log) => {
+                      const isSignedOut = log.action === 'Signed Out';
+                      const isReturned = log.action === 'Returned';
+                      const isAdded = log.action === 'Added';
+                      const isDeleted = log.action === 'Deleted';
+
+                      const badgeStyle = isSignedOut
+                        ? 'bg-blue-50 text-blue-800 border-blue-200'
+                        : isReturned
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : isAdded
+                        ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                        : 'bg-red-50 text-red-800 border-red-200';
+
+                      return (
+                        <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="p-3.5 pl-5 font-mono text-slate-600">
+                            {new Date(log.actionDate).toLocaleString()}
+                          </td>
+                          <td className="p-3.5 font-bold text-slate-900">
+                            {log.toolDescription}
+                          </td>
+                          <td className="p-3.5 text-slate-600 font-semibold">
+                            {log.toolTypeSize}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-extrabold inline-block ${badgeStyle}`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="p-3.5">
+                            <span className="font-mono font-extrabold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                              {log.clockNumber || 'Stores'}
+                            </span>
+                          </td>
+                          <td className="p-3.5 text-slate-500 font-medium">
+                            {log.loggedBy || 'Stores'}
+                          </td>
+                          <td className="p-3.5 pr-5 text-right">
+                            <button
+                              onClick={() => handleRequestDeleteToolLog(log)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete Tool Log Entry"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="p-12 text-center text-slate-400 space-y-2">
+                        <FileText className="w-8 h-8 mx-auto text-slate-300" />
+                        <p className="font-bold text-slate-700 text-xs">No Tool Log Entries Found</p>
+                        <p className="text-xs text-slate-500">Sign out, return, or add tools to create log entries.</p>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ===================================================================== */}
+      {/* SCREEN 3: ALL CONSUMABLES LIST                                        */}
       {/* ===================================================================== */}
       {activeStoresMode === 'consumables' && (
         <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
@@ -879,8 +1114,8 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
                           </span>
                         </td>
                         <td className="p-3.5">
-                          <span className="font-mono text-slate-600">
-                            {log.machineNumber || 'N/A'}
+                          <span className="font-mono text-slate-700 font-bold">
+                            {getMachineLabelByIdOrNumber(log.machineNumber, machines)}
                           </span>
                         </td>
                         <td className="p-3.5 text-slate-500 font-medium">
@@ -1163,10 +1398,10 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
                     >
                       <option value="N/A">N/A (No Machine Linked)</option>
                       {operatingMachines.map((m) => {
-                        const machineNo = m.serialNumber || m.machineName || m.id;
+                        const machineDisplayName = formatMachineDisplayName(m);
                         return (
-                          <option key={m.id} value={machineNo}>
-                            {machineNo} — {m.machineName} {m.location ? `(${m.location})` : ''}
+                          <option key={m.id} value={machineDisplayName}>
+                            {machineDisplayName} {m.location ? `(${m.location})` : ''}
                           </option>
                         );
                       })}
@@ -1311,7 +1546,13 @@ export default function StoresDashboardView({ currentUser, jobs = [], machines =
                 <div>
                   <h3 className="text-sm font-black text-slate-900">Confirm Deletion</h3>
                   <p className="text-xs text-slate-500">
-                    {deleteTarget.type === 'tool' ? 'Remove Tool Stock item' : deleteTarget.type === 'consumable' ? 'Remove Consumable item' : 'Remove Allocation Log entry'}
+                    {deleteTarget.type === 'tool'
+                      ? 'Remove Tool Stock item'
+                      : deleteTarget.type === 'consumable'
+                      ? 'Remove Consumable item'
+                      : deleteTarget.type === 'tool_log'
+                      ? 'Remove Tool Log entry'
+                      : 'Remove Allocation Log entry'}
                   </p>
                 </div>
               </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Job, JobFile, CustomColumn, ComponentMatrix, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog, getPreQuoteId } from '../types';
-import { getConsumableAllocationLogs } from '../dbService';
+import { Job, JobFile, CustomColumn, ComponentMatrix, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog, WorksheetEntry, getPreQuoteId } from '../types';
+import { getConsumableAllocationLogs, getWorksheetEntries } from '../dbService';
 import { compressFile } from '../utils/imageCompressor';
 import JobCardDocument from './JobCardDocument';
 import CameraCaptureModal from './CameraCaptureModal';
@@ -41,7 +41,10 @@ import {
   RotateCcw,
   AlertTriangle,
   ClipboardList,
-  PackageCheck
+  PackageCheck,
+  ShieldCheck,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface JobEnquiriesViewProps {
@@ -100,12 +103,16 @@ export default function JobEnquiriesView({
     setSelectedPreQuoteGroup(group);
   };
 
-  // Modal active sub-tab: 'overview' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'
-  const [modalTab, setModalTab] = useState<'overview' | 'pictures' | 'reprint' | 'edit' | 'close' | 'goAhead'>('overview');
+  // Modal active sub-tab: 'overview' | 'pictures' | 'reprint' | 'close' | 'goAhead'
+  const [modalTab, setModalTab] = useState<'overview' | 'pictures' | 'reprint' | 'close' | 'goAhead'>('overview');
 
   // Consumable Allocation Logs State for Job Cards
   const [consumableLogs, setConsumableLogs] = useState<ConsumableAllocationLog[]>([]);
   const [loadingConsumables, setLoadingConsumables] = useState<boolean>(false);
+
+  // Worksheet Timesheet Logs State for Job Cards
+  const [worksheetLogs, setWorksheetLogs] = useState<WorksheetEntry[]>([]);
+  const [loadingWorksheets, setLoadingWorksheets] = useState<boolean>(false);
 
   useEffect(() => {
     if (selectedJob) {
@@ -114,6 +121,12 @@ export default function JobEnquiriesView({
         .then(logs => setConsumableLogs(logs))
         .catch(err => console.error("Error fetching consumable logs:", err))
         .finally(() => setLoadingConsumables(false));
+
+      setLoadingWorksheets(true);
+      getWorksheetEntries()
+        .then(entries => setWorksheetLogs(entries))
+        .catch(err => console.error("Error fetching worksheet logs:", err))
+        .finally(() => setLoadingWorksheets(false));
     }
   }, [selectedJob]);
 
@@ -135,14 +148,40 @@ export default function JobEnquiriesView({
     });
   };
 
-  const linkedConsumables = getLinkedConsumables(selectedJob);
+  // Helper to match worksheet timesheet lines linked to the selected job card
+  const getLinkedWorksheets = (job: Job | null): WorksheetEntry[] => {
+    if (!job) return [];
+    const cardNo = job.jobCardDetails?.jobCardNumber?.trim().toUpperCase();
+    const jobId = job.id?.trim().toUpperCase();
+    const dnNo = job.deliveryNoteNumber?.trim().toUpperCase();
+    const orderNo = job.jobCardDetails?.orderNumber?.trim().toUpperCase() || job.customerOrderNo?.trim().toUpperCase();
 
-  // Job Pictures State
-  const [pictureCategoryFilter, setPictureCategoryFilter] = useState<'all' | 'delivery' | 'job' | 'inspection'>('all');
-  const [uploadCategory, setUploadCategory] = useState<'delivery' | 'job' | 'inspection'>('job');
+    return worksheetLogs.filter(entry => {
+      if (!entry.jobNumber) return false;
+      const entryJobNo = entry.jobNumber.trim().toUpperCase();
+      return Boolean(
+        (cardNo && entryJobNo === cardNo) ||
+        (jobId && entryJobNo === jobId) ||
+        (dnNo && entryJobNo === dnNo) ||
+        (orderNo && entryJobNo === orderNo) ||
+        (cardNo && (entryJobNo.includes(cardNo) || cardNo.includes(entryJobNo))) ||
+        (jobId && (entryJobNo.includes(jobId) || jobId.includes(entryJobNo)))
+      );
+    });
+  };
+
+  const linkedConsumables = getLinkedConsumables(selectedJob);
+  const linkedWorksheets = getLinkedWorksheets(selectedJob);
+
+  // Photo Category Type for 5 slider categories
+  type PhotoCategory = 'paperwork' | 'component' | 'inspection' | 'final_inspection' | 'delivery';
+
+  // Job Pictures Slider State
+  const [activePhotoSlideIndex, setActivePhotoSlideIndex] = useState<number>(0);
+  const [uploadCategory, setUploadCategory] = useState<PhotoCategory>('paperwork');
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
-  const [cameraOverrideCategory, setCameraOverrideCategory] = useState<'delivery' | 'job' | 'inspection' | undefined>(undefined);
+  const [cameraOverrideCategory, setCameraOverrideCategory] = useState<PhotoCategory | undefined>(undefined);
   const [deletingFileIndex, setDeletingFileIndex] = useState<number | null>(null);
   const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
   const [lightboxPhoto, setLightboxPhoto] = useState<{ url: string; name: string; category?: string; uploadedAt?: string; size?: number; originalIdx?: number } | null>(null);
@@ -156,22 +195,37 @@ export default function JobEnquiriesView({
     );
   };
 
-  // Helper to categorize photos
-  const getPhotoCategory = (file: JobFile): 'delivery' | 'job' | 'inspection' => {
-    if (file.category === 'delivery' || file.category === 'job' || file.category === 'inspection') {
-      return file.category;
-    }
+  // Helper to categorize photos into 5 requested slider categories
+  const getPhotoCategory = (file: JobFile): PhotoCategory => {
+    const cat = (file.category || '').toLowerCase();
+    if (cat === 'paperwork' || cat === 'document' || cat === 'documents') return 'paperwork';
+    if (cat === 'component' || cat === 'job' || cat === 'components') return 'component';
+    if (cat === 'inspection' || cat === 'qc') return 'inspection';
+    if (cat === 'final_inspection' || cat === 'final-inspection' || cat === 'final') return 'final_inspection';
+    if (cat === 'delivery' || cat === 'dispatch' || cat === 'delivery_final') return 'delivery';
+
+    // Fallback heuristic by name
     const nameLower = (file.name || '').toLowerCase();
-    if (nameLower.includes('delivery') || nameLower.includes('received') || nameLower.includes('pod') || nameLower.includes('dn')) {
+    if (nameLower.includes('paperwork') || nameLower.includes('pod') || nameLower.includes('dn_') || nameLower.includes('doc')) {
+      return 'paperwork';
+    }
+    if (nameLower.includes('final') || nameLower.includes('signoff') || nameLower.includes('release')) {
+      return 'final_inspection';
+    }
+    if (nameLower.includes('delivery') || nameLower.includes('dispatch') || nameLower.includes('leaving')) {
       return 'delivery';
     }
     if (nameLower.includes('inspect') || nameLower.includes('qc') || nameLower.includes('finding')) {
       return 'inspection';
     }
-    return 'job';
+
+    // Default receiving photos tagged as delivery map to paperwork
+    if (file.category === 'delivery') return 'paperwork';
+
+    return 'component';
   };
 
-  const processPhotoFiles = async (fileList: File[], categoryOverride?: 'delivery' | 'job' | 'inspection') => {
+  const processPhotoFiles = async (fileList: File[], categoryOverride?: PhotoCategory) => {
     if (!fileList || fileList.length === 0 || !selectedJob) return;
 
     const targetCat = categoryOverride || uploadCategory;
@@ -192,8 +246,8 @@ export default function JobEnquiriesView({
 
     if (newFiles.length > 0) {
       try {
-        if (targetCat === 'delivery') {
-          // Sync delivery photo across all jobs on this delivery
+        if (targetCat === 'paperwork' || targetCat === 'delivery') {
+          // Sync paperwork / delivery photos across all jobs on this delivery note
           const deliveryJobs = jobs.filter(j => j.deliveryNoteNumber === selectedJob.deliveryNoteNumber);
           for (const dJob of deliveryJobs) {
             const updatedJob: Job = {
@@ -310,7 +364,7 @@ export default function JobEnquiriesView({
     return total === 1 ? "1 of 1" : `Job ${index} of ${total}`;
   };
 
-  const handleSelectJob = (job: Job, defaultModalTab: 'overview' | 'reprint' | 'edit' | 'close' | 'goAhead' = 'overview') => {
+  const handleSelectJob = (job: Job, defaultModalTab: 'overview' | 'reprint' | 'close' | 'goAhead' = 'overview') => {
     setSelectedJob(job);
     setModalTab(defaultModalTab);
 
@@ -757,15 +811,6 @@ export default function JobEnquiriesView({
                           </button>
                         )}
 
-                        {/* Edit Job Details */}
-                        <button
-                          onClick={() => handleSelectJob(job, 'edit')}
-                          className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-                          title="Edit Job Parameters"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-
                         {/* Delete Single Job */}
                         {onDeleteJob && (
                           <button
@@ -789,8 +834,8 @@ export default function JobEnquiriesView({
 
       {/* COMPREHENSIVE JOB ENQUIRY MODAL */}
       {selectedJob && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 md:p-6 overflow-y-auto">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-fade-in text-left">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 md:p-6">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-[95vw] max-w-6xl h-[88vh] max-h-[880px] min-h-[500px] flex flex-col overflow-hidden animate-fade-in text-left">
             
             {/* Modal Header */}
             <div className="p-6 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
@@ -870,18 +915,6 @@ export default function JobEnquiriesView({
                     Reprint Job Card
                   </button>
                 )}
-
-                <button
-                  onClick={() => setModalTab('edit')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                    modalTab === 'edit'
-                      ? 'bg-white text-amber-700 shadow-xs border border-slate-200'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-                  }`}
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  Edit Job Parameters
-                </button>
 
                 <button
                   onClick={() => setModalTab('close')}
@@ -1130,7 +1163,7 @@ export default function JobEnquiriesView({
                               <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase">Total Estimated Cost</p>
                                 <p className="font-mono font-bold text-purple-700 mt-0.5">
-                                  ${selectedJob.preQuoteDetails.steps.reduce((sum, s) => sum + s.price, 0)}
+                                  R {(selectedJob.preQuoteDetails.totalCost ?? selectedJob.preQuoteDetails.steps.reduce((sum, s) => sum + (s.price * (s.quantity || 1)), 0)).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </p>
                               </div>
                             </div>
@@ -1217,6 +1250,129 @@ export default function JobEnquiriesView({
                       )}
                     </div>
                   )}
+
+                  {/* WORKSHEET LOG SECTION IN OVERVIEW (QUICK VIEW OF EVERY LINE FROM WORKSHEET) */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4" id="job-worksheet-log-section">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="bg-blue-50 p-2 rounded-xl text-blue-600 border border-blue-200/60">
+                          <Clock className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Workshop Timesheet Activity</h4>
+                          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <span>Worksheet Log</span>
+                            {(selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id) && (
+                              <span className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 font-mono px-2 py-0.5 rounded-md font-bold">
+                                Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}
+                              </span>
+                            )}
+                          </h3>
+                        </div>
+                      </div>
+
+                      {linkedWorksheets.length > 0 && (
+                        <div className="flex items-center gap-2 text-xs font-bold">
+                          <span className="bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1 rounded-xl">
+                            {linkedWorksheets.length} {linkedWorksheets.length === 1 ? 'Line' : 'Lines'} Captured
+                          </span>
+                          <span className="bg-purple-50 text-purple-800 border border-purple-200 px-3 py-1 rounded-xl font-mono">
+                            {linkedWorksheets.reduce((sum, item) => sum + (item.durationHours || 0), 0).toFixed(2)} Workshop Hours
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {loadingWorksheets ? (
+                      <div className="text-center py-6 text-slate-400 text-xs font-medium">
+                        Loading worksheet log lines...
+                      </div>
+                    ) : linkedWorksheets.length === 0 ? (
+                      <div className="text-center py-8 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 p-4">
+                        <Clock className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                        <p className="text-xs font-bold text-slate-600">No worksheet lines logged for this job card yet</p>
+                        <p className="text-[11px] text-slate-400 mt-1 max-w-md mx-auto">
+                          When operators capture daily worksheet page lines in the Worksheet Dashboard referencing Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}, they will automatically appear here.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                        <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                              <th className="p-3">Job Date</th>
+                              <th className="p-3">Page #</th>
+                              <th className="p-3">Machine / Book</th>
+                              <th className="p-3">Clock #</th>
+                              <th className="p-3">Operation</th>
+                              <th className="p-3">Time Range</th>
+                              <th className="p-3 text-center">Duration</th>
+                              <th className="p-3">Captured By / Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {linkedWorksheets.map((entry) => (
+                              <tr key={entry.id} className="hover:bg-blue-50/20 transition-colors">
+                                <td className="p-3 whitespace-nowrap font-mono font-bold text-slate-800 text-[11px]">
+                                  {entry.jobDate}
+                                </td>
+                                <td className="p-3 whitespace-nowrap">
+                                  <span className="font-mono font-bold text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-900">
+                                    p. {entry.pageNumber}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <div className="font-bold text-slate-800">
+                                    {entry.machineName || 'Machine Equipment'}
+                                  </div>
+                                  <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                    {entry.bookNumber && (
+                                      <span className="text-amber-700 bg-amber-50 px-1 rounded border border-amber-200">
+                                        {entry.bookNumber.startsWith('Book') ? entry.bookNumber : `Book #${entry.bookNumber}`}
+                                      </span>
+                                    )}
+                                    {entry.machineSerialNumber && (
+                                      <span>SN: {entry.machineSerialNumber}</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-3 whitespace-nowrap font-mono font-bold text-slate-800">
+                                  <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
+                                    {entry.clockNumber}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                    {entry.operation}
+                                  </span>
+                                </td>
+                                <td className="p-3 whitespace-nowrap font-mono text-slate-700 text-[11px]">
+                                  {entry.startTime} – {entry.endTime}
+                                </td>
+                                <td className="p-3 text-center whitespace-nowrap">
+                                  <span className="font-mono font-bold text-[11px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                    {entry.durationHours ? `${entry.durationHours.toFixed(2)} hrs` : `${Math.floor((entry.durationMinutes || 0)/60)}h ${(entry.durationMinutes || 0)%60}m`}
+                                  </span>
+                                </td>
+                                <td className="p-3 max-w-xs">
+                                  {entry.notes ? (
+                                    <div className="text-slate-700 truncate text-[11px]" title={entry.notes}>
+                                      {entry.notes}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 text-[10px] italic">No notes</span>
+                                  )}
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Captured by {entry.capturedBy || 'Operator'}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
 
                   {/* LINKED CONSUMABLE LOGS SECTION IN OVERVIEW */}
                   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
@@ -1313,297 +1469,309 @@ export default function JobEnquiriesView({
                 </div>
               )}
 
-              {/* SUB-TAB: JOB PICTURES GALLERY */}
+              {/* SUB-TAB: JOB PICTURES GALLERY (5-SLIDER CATEGORY VIEW) */}
               {modalTab === 'pictures' && (() => {
+                const PHOTO_SLIDES = [
+                  {
+                    key: 'paperwork' as const,
+                    num: 1,
+                    title: 'Paperwork',
+                    subtitle: 'Document upload photos from Job Receiving',
+                    icon: FileText,
+                    badgeBg: 'bg-blue-50 text-blue-700 border-blue-200',
+                    activeBg: 'bg-blue-600 text-white shadow-sm ring-1 ring-blue-700',
+                    description: 'Pictures taken in job receiving under document upload (delivery notes, customer paperwork, purchase orders) are stored here.'
+                  },
+                  {
+                    key: 'component' as const,
+                    num: 2,
+                    title: 'Components',
+                    subtitle: 'Job receiving component photos',
+                    icon: Wrench,
+                    badgeBg: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                    activeBg: 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-700',
+                    description: 'Pictures taken in job receiving under each component item (as-received condition, serial plates, housings) are stored here.'
+                  },
+                  {
+                    key: 'inspection' as const,
+                    num: 3,
+                    title: 'Inspection',
+                    subtitle: 'Technical QC & damage assessment photos',
+                    icon: ClipboardCheck,
+                    badgeBg: 'bg-amber-50 text-amber-800 border-amber-200',
+                    activeBg: 'bg-amber-600 text-white shadow-sm ring-1 ring-amber-700',
+                    description: 'Pictures taken during technical inspection, teardown findings, and damage assessments.'
+                  },
+                  {
+                    key: 'final_inspection' as const,
+                    num: 4,
+                    title: 'Final Inspection',
+                    subtitle: 'Pre-release QC sign-off photos',
+                    icon: ShieldCheck,
+                    badgeBg: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                    activeBg: 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-700',
+                    description: 'Photos taken during final quality checks before job release. At least one photo required here before a job can be closed.'
+                  },
+                  {
+                    key: 'delivery' as const,
+                    num: 5,
+                    title: 'Delivery',
+                    subtitle: 'Final photos when job leaves premises',
+                    icon: Truck,
+                    badgeBg: 'bg-purple-50 text-purple-800 border-purple-200',
+                    activeBg: 'bg-purple-600 text-white shadow-sm ring-1 ring-purple-700',
+                    description: 'Final photos of completed job packaged, loaded onto truck, or leaving the premises at dispatch.'
+                  }
+                ];
+
                 const pictures = (selectedJob.files || [])
                   .map((file, originalIdx) => ({ file, originalIdx }))
                   .filter(item => isPictureFile(item.file));
 
-                const deliveryPhotos = pictures.filter(item => getPhotoCategory(item.file) === 'delivery');
-                const jobPhotos = pictures.filter(item => getPhotoCategory(item.file) === 'job');
+                const paperworkPhotos = pictures.filter(item => getPhotoCategory(item.file) === 'paperwork');
+                const componentPhotos = pictures.filter(item => getPhotoCategory(item.file) === 'component');
                 const inspectionPhotos = pictures.filter(item => getPhotoCategory(item.file) === 'inspection');
+                const finalInspectionPhotos = pictures.filter(item => getPhotoCategory(item.file) === 'final_inspection');
+                const deliveryPhotos = pictures.filter(item => getPhotoCategory(item.file) === 'delivery');
 
-                const displayedPhotos = pictures.filter(item => {
-                  if (pictureCategoryFilter === 'all') return true;
-                  return getPhotoCategory(item.file) === pictureCategoryFilter;
-                });
+                const slideCounts = [
+                  paperworkPhotos.length,
+                  componentPhotos.length,
+                  inspectionPhotos.length,
+                  finalInspectionPhotos.length,
+                  deliveryPhotos.length
+                ];
+
+                const currentSlide = PHOTO_SLIDES[activePhotoSlideIndex] || PHOTO_SLIDES[0];
+                const currentSlidePhotos = pictures.filter(
+                  item => getPhotoCategory(item.file) === currentSlide.key
+                );
 
                 return (
-                  <div className="space-y-6">
-                    {/* Header Banner & Filters */}
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                        <div>
-                          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                            <FileImage className="w-5 h-5 text-blue-600" />
-                            Job Pictures Repository
-                          </h3>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Centralized gallery for delivery photos, job component photos, and inspection report photos.
-                          </p>
-                        </div>
+                  <div className="space-y-5">
+                    {/* 5-SLIDER TAB NAVIGATION SWITCHER */}
+                    <div className="bg-slate-100 p-2 rounded-2xl border border-slate-200 space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5">
+                        {PHOTO_SLIDES.map((slide, idx) => {
+                          const SlideIcon = slide.icon;
+                          const count = slideCounts[idx];
+                          const isActive = activePhotoSlideIndex === idx;
 
-                        {/* Quick Upload Action */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCameraOverrideCategory(uploadCategory);
-                              setIsCameraModalOpen(true);
-                            }}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                          >
-                            <Camera className="w-4 h-4" />
-                            <span>Take Photo</span>
-                          </button>
-
-                          <label className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm">
-                            <Upload className="w-4 h-4" />
-                            <span>Upload Photos</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              onChange={handleUploadPictures}
-                              className="hidden"
-                              disabled={isUploadingPhoto}
-                            />
-                          </label>
-                        </div>
+                          return (
+                            <button
+                              key={slide.key}
+                              type="button"
+                              onClick={() => {
+                                setActivePhotoSlideIndex(idx);
+                                setUploadCategory(slide.key);
+                              }}
+                              className={`p-2.5 rounded-xl text-xs font-bold transition-all flex flex-col justify-between gap-1 text-left cursor-pointer ${
+                                isActive
+                                  ? slide.activeBg
+                                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between w-full">
+                                <span className={`text-[10px] font-extrabold px-1.5 py-0.2 rounded-md ${
+                                  isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
+                                }`}>
+                                  Section {slide.num}
+                                </span>
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                  isActive ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
+                                }`}>
+                                  {count}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 pt-1">
+                                <SlideIcon className="w-4 h-4 shrink-0" />
+                                <span className="truncate">{slide.title}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
 
-                      {/* Category Filter Pills & Target Upload Selector */}
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setPictureCategoryFilter('all')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                              pictureCategoryFilter === 'all'
-                                ? 'bg-slate-900 text-white shadow-xs'
-                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                            }`}
-                          >
-                            <span>All Pictures</span>
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${pictureCategoryFilter === 'all' ? 'bg-slate-700 text-white' : 'bg-slate-200 text-slate-700'}`}>
-                              {pictures.length}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setPictureCategoryFilter('delivery')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                              pictureCategoryFilter === 'delivery'
-                                ? 'bg-blue-600 text-white shadow-xs'
-                                : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
-                            }`}
-                          >
-                            <Truck className="w-3.5 h-3.5" />
-                            <span>Delivery Photos</span>
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${pictureCategoryFilter === 'delivery' ? 'bg-blue-800 text-white' : 'bg-blue-100 text-blue-800'}`}>
-                              {deliveryPhotos.length}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setPictureCategoryFilter('job')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                              pictureCategoryFilter === 'job'
-                                ? 'bg-indigo-600 text-white shadow-xs'
-                                : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200'
-                            }`}
-                          >
-                            <Wrench className="w-3.5 h-3.5" />
-                            <span>Job Photos</span>
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${pictureCategoryFilter === 'job' ? 'bg-indigo-800 text-white' : 'bg-indigo-100 text-indigo-800'}`}>
-                              {jobPhotos.length}
-                            </span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setPictureCategoryFilter('inspection')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                              pictureCategoryFilter === 'inspection'
-                                ? 'bg-amber-600 text-white shadow-xs'
-                                : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200'
-                            }`}
-                          >
-                            <ClipboardCheck className="w-3.5 h-3.5" />
-                            <span>Inspection Photos</span>
-                            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${pictureCategoryFilter === 'inspection' ? 'bg-amber-800 text-white' : 'bg-amber-100 text-amber-800'}`}>
-                              {inspectionPhotos.length}
-                            </span>
-                          </button>
+                      {/* SLIDE HEADER & NAVIGATION */}
+                      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-start gap-3">
+                          <div className={`p-2.5 rounded-xl shrink-0 ${
+                            currentSlide.key === 'paperwork' ? 'bg-blue-50 text-blue-600' :
+                            currentSlide.key === 'component' ? 'bg-indigo-50 text-indigo-600' :
+                            currentSlide.key === 'inspection' ? 'bg-amber-50 text-amber-600' :
+                            currentSlide.key === 'final_inspection' ? 'bg-emerald-50 text-emerald-600' :
+                            'bg-purple-50 text-purple-600'
+                          }`}>
+                            <currentSlide.icon className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+                                Slide {activePhotoSlideIndex + 1} of 5
+                              </span>
+                              <span className="text-xs font-bold text-slate-800">
+                                {currentSlide.title}
+                              </span>
+                              {currentSlide.key === 'final_inspection' && (
+                                <span className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200 px-2 py-0.5 rounded-full">
+                                  Required to Close Job
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5 max-w-xl">
+                              {currentSlide.description}
+                            </p>
+                          </div>
                         </div>
 
-                        {/* Upload Category Selector */}
-                        <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200 text-xs">
-                          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider pl-1">Target Category:</span>
-                          <select
-                            value={uploadCategory}
-                            onChange={(e) => setUploadCategory(e.target.value as any)}
-                            className="bg-white border border-slate-200 rounded-lg px-2 py-1 font-bold text-slate-800 focus:outline-hidden text-xs"
-                          >
-                            <option value="job">Job / Component Photo</option>
-                            <option value="delivery">Delivery Photo</option>
-                            <option value="inspection">Inspection Report Photo</option>
-                          </select>
+                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                          {/* Slide Previous / Next Switcher */}
+                          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                            <button
+                              type="button"
+                              disabled={activePhotoSlideIndex === 0}
+                              onClick={() => {
+                                const newIdx = Math.max(0, activePhotoSlideIndex - 1);
+                                setActivePhotoSlideIndex(newIdx);
+                                setUploadCategory(PHOTO_SLIDES[newIdx].key);
+                              }}
+                              className="p-1.5 rounded-lg text-slate-600 hover:bg-white disabled:opacity-30 cursor-pointer transition-colors"
+                              title="Previous Category"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <span className="text-[11px] font-bold text-slate-600 px-2 font-mono">
+                              {activePhotoSlideIndex + 1} / 5
+                            </span>
+                            <button
+                              type="button"
+                              disabled={activePhotoSlideIndex === PHOTO_SLIDES.length - 1}
+                              onClick={() => {
+                                const newIdx = Math.min(PHOTO_SLIDES.length - 1, activePhotoSlideIndex + 1);
+                                setActivePhotoSlideIndex(newIdx);
+                                setUploadCategory(PHOTO_SLIDES[newIdx].key);
+                              }}
+                              className="p-1.5 rounded-lg text-slate-600 hover:bg-white disabled:opacity-30 cursor-pointer transition-colors"
+                              title="Next Category"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
 
-                    {/* Pictures Grid / Empty State */}
-                    {displayedPhotos.length > 0 ? (
+                    {/* SLIDE PHOTO GALLERY GRID */}
+                    {currentSlidePhotos.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {displayedPhotos.map(({ file, originalIdx }) => {
-                          const cat = getPhotoCategory(file);
-                          return (
+                        {currentSlidePhotos.map(({ file, originalIdx }) => (
+                          <div
+                            key={originalIdx}
+                            className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition-all group flex flex-col justify-between"
+                          >
                             <div
-                              key={originalIdx}
-                              className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition-all group flex flex-col justify-between"
+                              className="relative aspect-4/3 bg-slate-900 overflow-hidden group cursor-pointer"
+                              onClick={() => setLightboxPhoto({ url: file.dataUrl, name: file.name, category: currentSlide.key, uploadedAt: file.uploadedAt, size: file.size, originalIdx })}
                             >
-                              <div
-                                className="relative aspect-4/3 bg-slate-900 overflow-hidden group cursor-pointer"
-                                onClick={() => setLightboxPhoto({ url: file.dataUrl, name: file.name, category: cat, uploadedAt: file.uploadedAt, size: file.size, originalIdx })}
-                              >
-                                <img
-                                  src={file.dataUrl}
-                                  alt={file.name}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                />
+                              <img
+                                src={file.dataUrl}
+                                alt={file.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                              />
 
-                                {/* Category Badge */}
-                                <div className="absolute top-2 left-2 z-10">
-                                  {cat === 'delivery' && (
-                                    <span className="bg-blue-600/90 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
-                                      <Truck className="w-3 h-3" /> Delivery
-                                    </span>
-                                  )}
-                                  {cat === 'job' && (
-                                    <span className="bg-indigo-600/90 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
-                                      <Wrench className="w-3 h-3" /> Job Photo
-                                    </span>
-                                  )}
-                                  {cat === 'inspection' && (
-                                    <span className="bg-amber-600/90 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1">
-                                      <ClipboardCheck className="w-3 h-3" /> Inspection
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Zoom Overlay */}
-                                <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                  <span className="bg-white text-slate-900 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5">
-                                    <ZoomIn className="w-4 h-4 text-indigo-600" /> View Full
-                                  </span>
-                                </div>
+                              <div className="absolute top-2 left-2 z-10">
+                                <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs backdrop-blur-xs flex items-center gap-1 text-white ${
+                                  currentSlide.key === 'paperwork' ? 'bg-blue-600/90' :
+                                  currentSlide.key === 'component' ? 'bg-indigo-600/90' :
+                                  currentSlide.key === 'inspection' ? 'bg-amber-600/90' :
+                                  currentSlide.key === 'final_inspection' ? 'bg-emerald-600/90' :
+                                  'bg-purple-600/90'
+                                }`}>
+                                  {currentSlide.title}
+                                </span>
                               </div>
 
-                              {/* Card Meta & Actions */}
-                              <div className="p-3 bg-white space-y-2">
-                                <p className="text-xs font-bold text-slate-800 truncate" title={file.name}>
-                                  {file.name}
-                                </p>
-
-                                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
-                                  <span>{file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString() : 'N/A'}</span>
-                                  <span>{Math.round(file.size / 1024)} KB</span>
-                                </div>
-
-                                <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                                  <a
-                                    href={file.dataUrl}
-                                    download={file.name}
-                                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
-                                    title="Download Image"
-                                  >
-                                    <Download className="w-3.5 h-3.5" /> Download
-                                  </a>
-
-                                  {deletingFileIndex === originalIdx ? (
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-[10px] text-rose-600 font-bold">Delete?</span>
-                                      <button
-                                        type="button"
-                                        disabled={isDeletingPhoto}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeletePicture(originalIdx);
-                                        }}
-                                        className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] px-2 py-0.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                                      >
-                                        {isDeletingPhoto ? '...' : 'Yes'}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={isDeletingPhoto}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setDeletingFileIndex(null);
-                                        }}
-                                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
-                                      >
-                                        No
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDeletingFileIndex(originalIdx);
-                                      }}
-                                      className="text-[11px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
-                                      title="Delete Picture"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                                    </button>
-                                  )}
-                                </div>
+                              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="bg-white text-slate-900 px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5">
+                                  <ZoomIn className="w-4 h-4 text-indigo-600" /> View Full
+                                </span>
                               </div>
                             </div>
-                          );
-                        })}
+
+                            <div className="p-3 bg-white space-y-2">
+                              <p className="text-xs font-bold text-slate-800 truncate" title={file.name}>
+                                {file.name}
+                              </p>
+
+                              <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium">
+                                <span>{file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString() : 'N/A'}</span>
+                                <span>{Math.round(file.size / 1024)} KB</span>
+                              </div>
+
+                              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                                <a
+                                  href={file.dataUrl}
+                                  download={file.name}
+                                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                                  title="Download Image"
+                                >
+                                  <Download className="w-3.5 h-3.5" /> Download
+                                </a>
+
+                                {deletingFileIndex === originalIdx ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] text-rose-600 font-bold">Delete?</span>
+                                    <button
+                                      type="button"
+                                      disabled={isDeletingPhoto}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeletePicture(originalIdx);
+                                      }}
+                                      className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] px-2 py-0.5 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                      {isDeletingPhoto ? '...' : 'Yes'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={isDeletingPhoto}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeletingFileIndex(null);
+                                      }}
+                                      className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-[10px] px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                                    >
+                                      No
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDeletingFileIndex(originalIdx);
+                                    }}
+                                    className="text-[11px] font-bold text-rose-500 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
+                                    title="Delete Picture"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     ) : (
-                      <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
-                        <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-3">
-                          <ImageIcon className="w-6 h-6" />
+                      <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-10 text-center space-y-3">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
+                          <currentSlide.icon className="w-6 h-6" />
                         </div>
-                        <h4 className="text-sm font-bold text-slate-800">No Pictures Found</h4>
-                        <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                          {pictureCategoryFilter === 'all'
-                            ? 'No photos have been uploaded for this job yet.'
-                            : `No ${pictureCategoryFilter} photos recorded for this job.`}
-                        </p>
-                        <div className="flex items-center justify-center gap-2 mt-4">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCameraOverrideCategory(pictureCategoryFilter !== 'all' ? pictureCategoryFilter : uploadCategory);
-                              setIsCameraModalOpen(true);
-                            }}
-                            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shadow-xs transition-all"
-                          >
-                            <Camera className="w-4 h-4" />
-                            <span>Take Photo Now</span>
-                          </button>
-
-                          <label className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-xs cursor-pointer shadow-xs transition-all">
-                            <Upload className="w-4 h-4" />
-                            <span>Upload {pictureCategoryFilter !== 'all' ? pictureCategoryFilter : 'Job'} Photo</span>
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              onChange={handleUploadPictures}
-                              className="hidden"
-                              disabled={isUploadingPhoto}
-                            />
-                          </label>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800">No {currentSlide.title} Photos Attached</h4>
+                          <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto leading-relaxed">
+                            {currentSlide.description}
+                          </p>
                         </div>
                       </div>
                     )}
@@ -1686,153 +1854,6 @@ export default function JobEnquiriesView({
                     </div>
                   </div>
                 </div>
-              )}
-
-              {/* SUB-TAB 3: EDIT JOB PARAMETERS */}
-              {modalTab === 'edit' && (
-                <form onSubmit={handleSaveEditedJob} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-1">
-                      <Edit2 className="w-4 h-4 text-amber-600" />
-                      Edit Job &amp; Routing Parameters
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      Update component descriptions or workshop routing details directly in Stage 5 Enquiries.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Component Type</label>
-                      {componentsList.length > 0 ? (
-                        <select
-                          value={editComponentType}
-                          onChange={(e) => {
-                            const newType = e.target.value;
-                            setEditComponentType(newType);
-                            const matched = componentsList.find(c => c.id === newType || c.name === newType);
-                            if (matched && matched.models && matched.models.length > 0) {
-                              setEditModelName(matched.models[0]);
-                            }
-                          }}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                        >
-                          {componentsList.map(comp => (
-                            <option key={comp.id} value={comp.id || comp.name}>{comp.name || comp.id}</option>
-                          ))}
-                          {!componentsList.some(c => c.id === editComponentType || c.name === editComponentType) && editComponentType && (
-                            <option value={editComponentType}>{editComponentType}</option>
-                          )}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={editComponentType}
-                          onChange={(e) => setEditComponentType(e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                        />
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Model Name</label>
-                      {(() => {
-                        const matched = componentsList.find(c => c.id === editComponentType || c.name === editComponentType);
-                        if (matched && matched.models && matched.models.length > 0) {
-                          return (
-                            <select
-                              value={editModelName}
-                              onChange={(e) => setEditModelName(e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                            >
-                              {matched.models.map((m, mIdx) => (
-                                <option key={`${m}-${mIdx}`} value={m}>{m}</option>
-                              ))}
-                              {!matched.models.includes(editModelName) && editModelName && (
-                                <option value={editModelName}>{editModelName}</option>
-                              )}
-                            </select>
-                          );
-                        }
-                        return (
-                          <input
-                            type="text"
-                            value={editModelName}
-                            onChange={(e) => setEditModelName(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                          />
-                        );
-                      })()}
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Part Number</label>
-                      <input
-                        type="text"
-                        value={editSerialNumber}
-                        onChange={(e) => setEditSerialNumber(e.target.value)}
-                        placeholder="e.g. PN-552A"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-slate-100 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Workshop Area</label>
-                      <input
-                        type="text"
-                        value={editWorkshopArea}
-                        onChange={(e) => setEditWorkshopArea(e.target.value)}
-                        placeholder="e.g. Bay 9B"
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Target Due Date</label>
-                      <input
-                        type="date"
-                        value={editDueDate}
-                        onChange={(e) => setEditDueDate(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Order / Account Number</label>
-                      <input
-                        type="text"
-                        value={editOrderNumber}
-                        onChange={(e) => setEditOrderNumber(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Your Reference</label>
-                      <input
-                        type="text"
-                        value={editYourRef}
-                        onChange={(e) => setEditYourRef(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-hidden focus:border-indigo-500"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setModalTab('overview')}
-                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs transition-all cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isEditSubmitting}
-                      className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 py-2 rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                      {isEditSubmitting ? 'Saving Changes...' : 'Save Job Updates'}
-                    </button>
-                  </div>
-                </form>
               )}
 
               {/* SUB-TAB 4: QC SIGN-OFF & CLOSURE */}
@@ -1933,33 +1954,33 @@ export default function JobEnquiriesView({
                         </div>
                       </div>
 
-                      {/* Option 1 Photo Validation Callout */}
+                      {/* Option 1 Final Inspection Photo Validation Callout */}
                       {closeReasonOption === 'completed' && (() => {
-                        const currentInspectionPhotosCount = (selectedJob.files || [])
+                        const finalInspectionCount = (selectedJob.files || [])
                           .filter(isPictureFile)
-                          .filter(f => getPhotoCategory(f) === 'inspection')
+                          .filter(f => getPhotoCategory(f) === 'final_inspection')
                           .length;
 
-                        const isMet = currentInspectionPhotosCount >= 2;
+                        const isMet = finalInspectionCount >= 1;
 
                         return isMet ? (
                           <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-900">
                             <div className="flex items-center gap-2.5">
                               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
                               <div>
-                                <p className="font-bold">Inspection Photo Requirement Met ({currentInspectionPhotosCount} photos attached)</p>
-                                <p className="text-[11px] text-emerald-700">Pre-inspection &amp; Final inspection photos confirmed.</p>
+                                <p className="font-bold">Final Inspection Requirement Met ({finalInspectionCount} photo attached)</p>
+                                <p className="text-[11px] text-emerald-700">Final QC photo verified before job closure.</p>
                               </div>
                             </div>
                             <button
                               type="button"
                               onClick={() => {
-                                setPictureCategoryFilter('inspection');
+                                setActivePhotoSlideIndex(3);
                                 setModalTab('pictures');
                               }}
                               className="bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 px-3 py-1.5 rounded-lg font-bold text-[11px] transition-colors cursor-pointer shrink-0"
                             >
-                              View Photos
+                              View Final Inspection Gallery
                             </button>
                           </div>
                         ) : (
@@ -1967,10 +1988,10 @@ export default function JobEnquiriesView({
                             <div className="flex items-start gap-2.5">
                               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                               <div>
-                                <h5 className="text-xs font-bold text-amber-950">Pre &amp; Final Inspection Photos Required</h5>
+                                <h5 className="text-xs font-bold text-amber-950">Final Inspection Photo Required</h5>
                                 <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                                  Option 1 (Job Completed) can only be closed when there are at least <strong>2 photos</strong> in the Inspection Photos section (Pre-Inspection &amp; Final Inspection).
-                                  Currently attached: <strong className="text-amber-950">{currentInspectionPhotosCount} of 2</strong>.
+                                  Option 1 (Job Completed) can only be closed when there is at least <strong>1 photo</strong> in Section 4 (Final Inspection).
+                                  Currently attached: <strong className="text-amber-950">{finalInspectionCount} of 1 required</strong>.
                                 </p>
                               </div>
                             </div>
@@ -1979,13 +2000,13 @@ export default function JobEnquiriesView({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setCameraOverrideCategory('inspection');
+                                  setCameraOverrideCategory('final_inspection');
                                   setIsCameraModalOpen(true);
                                 }}
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
                               >
                                 <Camera className="w-3.5 h-3.5" />
-                                <span>Take Inspection Photo</span>
+                                <span>Take Final Inspection Photo</span>
                               </button>
 
                               <label className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs">
@@ -1995,7 +2016,12 @@ export default function JobEnquiriesView({
                                   type="file"
                                   accept="image/*"
                                   multiple
-                                  onChange={handleDirectInspectionPhotoUpload}
+                                  onChange={(e) => {
+                                    if (e.target.files && e.target.files.length > 0) {
+                                      processPhotoFiles(Array.from(e.target.files), 'final_inspection');
+                                      e.target.value = '';
+                                    }
+                                  }}
                                   className="hidden"
                                   disabled={isUploadingPhoto}
                                 />
@@ -2004,12 +2030,12 @@ export default function JobEnquiriesView({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setPictureCategoryFilter('inspection');
+                                  setActivePhotoSlideIndex(3);
                                   setModalTab('pictures');
                                 }}
                                 className="bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 px-3 py-1.5 rounded-lg font-bold text-xs transition-colors cursor-pointer"
                               >
-                                Go to Job Pictures Gallery
+                                Go to Final Inspection Gallery
                               </button>
                             </div>
                           </div>
@@ -2073,12 +2099,12 @@ export default function JobEnquiriesView({
 
                       <div className="flex justify-end pt-2">
                         {currentUser?.permissions.canClose || currentUser?.permissions.canCreateJobCard || currentUser?.permissions.isAdmin ? (() => {
-                          const currentInspectionPhotosCount = (selectedJob.files || [])
+                          const finalInspectionCount = (selectedJob.files || [])
                             .filter(isPictureFile)
-                            .filter(f => getPhotoCategory(f) === 'inspection')
+                            .filter(f => getPhotoCategory(f) === 'final_inspection')
                             .length;
 
-                          const isBlocked = closeReasonOption === 'completed' && currentInspectionPhotosCount < 2;
+                          const isBlocked = closeReasonOption === 'completed' && finalInspectionCount < 1;
 
                           return (
                             <button
@@ -2093,7 +2119,7 @@ export default function JobEnquiriesView({
                               {isClosingSubmitting
                                 ? 'Archiving Job...'
                                 : isBlocked
-                                ? 'Requires 2 Inspection Photos to Complete'
+                                ? 'Requires 1 Final Inspection Photo to Complete'
                                 : closeReasonOption === 'completed'
                                 ? 'Complete Job & Authorize QC Pass'
                                 : 'Close Job as Returned Unrepaired'}

@@ -35,7 +35,14 @@ import {
   deleteComponentMatrix,
   saveUserProfile,
   getJobCardFormatConfig,
-  saveJobCardFormatConfig
+  saveJobCardFormatConfig,
+  subscribeJobs,
+  subscribeCustomers,
+  subscribeMachines,
+  subscribeComponentMatrices,
+  subscribeCustomColumns,
+  subscribeJobCardFormatConfig,
+  subscribeUsers
 } from './dbService';
 
 import LoginView from './components/LoginView';
@@ -48,6 +55,7 @@ import JobEnquiriesView from './components/JobEnquiriesView';
 import AllJobsView from './components/AllJobsView';
 import AdminCenterView from './components/AdminCenterView';
 import StoresDashboardView from './components/StoresDashboardView';
+import WorksheetDashboardView from './components/WorksheetDashboardView';
 
 import { 
   Wrench, 
@@ -66,7 +74,8 @@ import {
   Search,
   Menu,
   X,
-  Boxes
+  Boxes,
+  BookOpen
 } from 'lucide-react';
 
 export default function App() {
@@ -160,30 +169,83 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Fetch all ERP database data when user logs in
+  // 2. Real-Time Auto-Sync Subscriptions for all ERP database data
   useEffect(() => {
-    if (user && userProfile) {
-      loadAllERPData();
-    }
-  }, [user, userProfile?.uid]);
+    if (!user || !userProfile) return;
+
+    let unsubs: (() => void)[] = [];
+    setDataLoading(true);
+
+    const initAndSubscribe = async () => {
+      try {
+        // Clean up test jobs if they were seeded in the previous test run
+        const TEST_PURGE_KEY = 'mes_test_jobs_reverted_v1';
+        if (!localStorage.getItem(TEST_PURGE_KEY)) {
+          const testIds = ['JOB-2026-REC01', 'JOB-2026-INS02', 'JOB-2026-QUO03', 'JOB-2026-JCD04', 'JOB-2026-CLS05'];
+          for (const tid of testIds) {
+            try {
+              await deleteJob(tid);
+            } catch {
+              // ignore
+            }
+          }
+          localStorage.setItem(TEST_PURGE_KEY, 'true');
+        }
+      } catch (err) {
+        console.error("Cleanup check error:", err);
+      }
+
+      // Establish real-time auto-sync listeners
+      unsubs.push(subscribeJobs((fetchedJobs) => {
+        setJobs(fetchedJobs);
+        setDataLoading(false);
+      }));
+
+      unsubs.push(subscribeCustomers((fetchedCustomers) => {
+        setCustomers(fetchedCustomers);
+      }));
+
+      unsubs.push(subscribeMachines((fetchedMachines) => {
+        setMachines(fetchedMachines);
+      }));
+
+      unsubs.push(subscribeComponentMatrices((fetchedComponents) => {
+        setComponentsList(fetchedComponents);
+      }));
+
+      unsubs.push(subscribeCustomColumns((fetchedCustomCols) => {
+        setCustomColumns(fetchedCustomCols);
+      }));
+
+      unsubs.push(subscribeJobCardFormatConfig((fetchedFormat) => {
+        setJobCardFormat(fetchedFormat);
+      }));
+
+      if (userProfile.permissions.isAdmin) {
+        unsubs.push(subscribeUsers((fetchedUsers) => {
+          setUsersList(fetchedUsers);
+        }));
+      }
+    };
+
+    initAndSubscribe();
+
+    return () => {
+      unsubs.forEach(unsub => unsub());
+    };
+  }, [user, userProfile?.uid, userProfile?.permissions.isAdmin]);
 
   const loadAllERPData = async () => {
     setDataLoading(true);
     try {
-      // Perform initial purge if required by user
-      const PURGE_KEY = 'mes_jobs_purged_v4';
-      if (!localStorage.getItem(PURGE_KEY)) {
-        await deleteAllJobs();
-        localStorage.setItem(PURGE_KEY, 'true');
-      }
-
-      const fetchedJobs = await getJobs();
-      const fetchedCustomers = await getCustomers();
-      const fetchedMachines = await getMachines();
-      const fetchedComponents = await getComponentMatrices();
-      const fetchedCustomCols = await getCustomColumns();
-      const fetchedFormat = await getJobCardFormatConfig();
-
+      const [fetchedJobs, fetchedCustomers, fetchedMachines, fetchedComponents, fetchedCustomCols, fetchedFormat] = await Promise.all([
+        getJobs(),
+        getCustomers(),
+        getMachines(),
+        getComponentMatrices(),
+        getCustomColumns(),
+        getJobCardFormatConfig()
+      ]);
       setJobs(fetchedJobs);
       setCustomers(fetchedCustomers);
       setMachines(fetchedMachines);
@@ -191,13 +253,12 @@ export default function App() {
       setCustomColumns(fetchedCustomCols);
       setJobCardFormat(fetchedFormat);
 
-      // Load all users for the admin center if user is Admin
       if (userProfile?.permissions.isAdmin) {
         const fetchedUsers = await getAllUsers();
         setUsersList(fetchedUsers);
       }
     } catch (e) {
-      console.error("Error loading ERP data:", e);
+      console.error("Error force syncing ERP data:", e);
     } finally {
       setDataLoading(false);
     }
@@ -231,87 +292,57 @@ export default function App() {
     }
   };
 
-  // 4. Handle Save Actions (Refreshes data immediately!)
+  // 4. Handle Save Actions (Auto-synced via Firestore listeners!)
   const handleSaveJobs = async (newJobs: Job[]) => {
     for (const job of newJobs) {
       await saveJob(job);
     }
-    await loadAllERPData();
     setActiveTab('dashboard'); // Redirect to dashboard to see newly captured jobs
   };
 
   const handleUpdateJob = async (updatedJob: Job) => {
     await saveJob(updatedJob);
-    await loadAllERPData();
   };
 
   const handleSaveCustomer = async (cust: Customer) => {
     await saveCustomer(cust);
-    await loadAllERPData();
   };
 
   const handleDeleteCustomer = async (id: string) => {
     await deleteCustomer(id);
-    await loadAllERPData();
   };
 
   const handleSaveMachine = async (mach: Machine) => {
-    setMachines(prev => {
-      const exists = prev.some(m => m.id === mach.id);
-      if (exists) {
-        return prev.map(m => m.id === mach.id ? mach : m);
-      }
-      return [mach, ...prev];
-    });
-    try {
-      await saveMachine(mach);
-    } catch (err) {
-      console.error("Error saving machine:", err);
-    }
+    await saveMachine(mach);
   };
 
   const handleDeleteMachine = async (id: string) => {
-    setMachines(prev => prev.filter(m => m.id !== id));
-    try {
-      await deleteMachine(id);
-    } catch (err) {
-      console.error("Error deleting machine:", err);
-    }
+    await deleteMachine(id);
   };
 
   const handleDeleteAllMachines = async () => {
-    setMachines([]);
-    try {
-      await deleteAllMachines();
-    } catch (err) {
-      console.error("Error deleting all machines:", err);
-    }
+    await deleteAllMachines();
   };
 
   const handleSaveCustomColumns = async (cols: CustomColumn[]) => {
     await saveCustomColumns(cols);
-    await loadAllERPData();
   };
 
   const handleSaveComponentMatrix = async (matrix: ComponentMatrix) => {
     await saveComponentMatrix(matrix);
-    await loadAllERPData();
   };
 
   const handleDeleteComponentMatrix = async (id: string) => {
     await deleteComponentMatrix(id);
-    await loadAllERPData();
   };
 
   const handleUpdateUserPermissions = async (uid: string, perms: UserPermissions) => {
     await updateUserPermissions(uid, perms);
-    await loadAllERPData();
   };
 
   const handleSaveJobCardFormat = async (config: JobCardFormatConfig) => {
     setJobCardFormat(config);
     await saveJobCardFormatConfig(config);
-    await loadAllERPData();
   };
 
   // Jump context from dashboard action buttons
@@ -328,6 +359,7 @@ export default function App() {
 
     switch(tabName) {
       case 'dashboard': return true;
+      case 'worksheet': return Boolean(p.canWorksheet !== false);
       case 'stores': return Boolean(p.canStores);
       case 'receiving': return Boolean(p.canReceive || p.canCreateJobCard);
       case 'inspection': return Boolean(p.canInspect || p.canCreateJobCard);
@@ -343,7 +375,7 @@ export default function App() {
   // Automatically redirect user if current activeTab is not permitted
   useEffect(() => {
     if (userProfile && !hasAccess(activeTab)) {
-      const allowed = ['dashboard', 'receiving', 'inspection', 'quoting', 'jobcard', 'enquiries', 'stores', 'admin'].find(tab => hasAccess(tab));
+      const allowed = ['dashboard', 'worksheet', 'receiving', 'inspection', 'quoting', 'jobcard', 'enquiries', 'stores', 'admin'].find(tab => hasAccess(tab));
       if (allowed) {
         setActiveTab(allowed);
       }
@@ -375,6 +407,7 @@ export default function App() {
     { id: 'jobcard', label: '4. Job Card Creation', icon: CalendarRange, stage: 'Stage 4' },
     { id: 'enquiries', label: '5. Job Enquiries', icon: Search, stage: 'Stage 5' },
     { id: 'stores', label: 'Stores Inventory', icon: Boxes },
+    { id: 'worksheet', label: 'Worksheet Logs', icon: BookOpen },
     { id: 'admin', label: 'Admin Center', icon: Lock, isAdminOnly: true },
   ];
 
@@ -446,9 +479,15 @@ export default function App() {
           <div className="truncate flex-1">
             <p className="text-xs font-bold text-slate-200 truncate">{userProfile.displayName || 'Operator'}</p>
             <p className="text-[10px] text-slate-400 font-mono truncate">{userProfile.email}</p>
-            <span className="inline-block mt-1 text-[9px] font-extrabold text-blue-400 bg-blue-900/40 border border-blue-800 px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
-              {userProfile.permissions.isAdmin ? 'Administrator' : 'Operator'}
-            </span>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+              <span className="inline-block text-[9px] font-extrabold text-blue-400 bg-blue-900/40 border border-blue-800 px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
+                {userProfile.permissions.isAdmin ? 'Administrator' : 'Operator'}
+              </span>
+              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/80 px-1.5 py-0.5 rounded-sm" title="Real-time automatic sync enabled">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Live Sync
+              </span>
+            </div>
           </div>
         </div>
 
@@ -549,6 +588,20 @@ export default function App() {
                 currentUser={userProfile} 
                 onSelectJob={handleSelectJobFromDashboard}
                 onNavigateToStores={() => setActiveTab('stores')}
+                onSaveMachine={handleSaveMachine}
+              />
+            )}
+
+            {activeTab === 'worksheet' && (
+              <WorksheetDashboardView
+                jobs={jobs}
+                machines={machines}
+                currentUser={userProfile}
+                onSaveMachine={handleSaveMachine}
+                onSelectJob={(job) => {
+                  setSelectedJobContext(job);
+                  setActiveTab('enquiries');
+                }}
               />
             )}
 

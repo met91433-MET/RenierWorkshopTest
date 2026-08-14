@@ -113,7 +113,7 @@ export default function JobCardView({
     if (!selectedJob) return;
 
     if (!assignedTechnician.trim()) {
-      setValidationError("Lead Technician name is required before confirming and releasing the Job Card.");
+      setValidationError("Lead Technician name is required before confirming and saving the Job Card.");
       setActiveModalTab('edit');
       return;
     }
@@ -145,7 +145,7 @@ export default function JobCardView({
       await onUpdateJob(updatedJob);
       const releasedJobId = selectedJob.id;
       setSelectedJob(null);
-      setSuccessToast(`Job Card #${jobCardNumber} successfully created & released for Component ${releasedJobId}! Moved to Active Workshop Floor.`);
+      setSuccessToast(`Job Card #${jobCardNumber} successfully created & saved for Component ${releasedJobId}! Moved to Active Workshop Floor.`);
     } catch (error) {
       console.error(error);
       setValidationError("Error saving Job Card details. Please check network connection.");
@@ -163,6 +163,17 @@ export default function JobCardView({
       elementId: 'printable-jobcard-doc',
       documentTitle: `Job Card - ${getJobCardNum()}`
     });
+  };
+
+  const handlePrintAndSave = async () => {
+    if (!selectedJob) return;
+    if (!assignedTechnician.trim()) {
+      setValidationError("Lead Technician name is required before saving the Job Card.");
+      setActiveModalTab('edit');
+      return;
+    }
+    handlePrint();
+    await handleSubmit();
   };
 
   const filteredJobs = pendingJobs.filter(job => 
@@ -312,7 +323,7 @@ export default function JobCardView({
                     Job Card Wizard: {selectedJob.id}
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Configure details, preview visual sheets, and print or release to workshop.
+                    Configure details, preview visual sheets, and print or save to workshop.
                   </p>
                 </div>
               </div>
@@ -375,12 +386,13 @@ export default function JobCardView({
               <div className="flex items-center gap-2 self-end sm:self-auto">
                 <button
                   type="button"
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer"
-                  title="Print / Save PDF document in new window"
+                  onClick={handlePrintAndSave}
+                  disabled={isSubmitting}
+                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer disabled:opacity-50"
+                  title="Print and save job card"
                 >
                   <Printer className="w-3.5 h-3.5 text-slate-600" />
-                  Print Document
+                  Print and Save Job Card
                 </button>
                 <button
                   type="button"
@@ -388,7 +400,7 @@ export default function JobCardView({
                   disabled={isSubmitting}
                   className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition-all shadow-sm cursor-pointer select-none disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Saving...' : 'Confirm & Release Job Card'}
+                  {isSubmitting ? 'Saving...' : 'Confirm and Save Job Card'}
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>

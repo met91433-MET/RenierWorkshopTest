@@ -4,6 +4,7 @@ export interface UserPermissions {
   canQuote: boolean;
   canCreateJobCard: boolean;
   canStores: boolean;
+  canWorksheet?: boolean;
   canClose: boolean;
   isAdmin: boolean;
 }
@@ -103,6 +104,40 @@ export interface ConsumableAllocationLog {
   quantityAllocated: number;
   allocatedAt: string; // ISO or formatted date string
   loggedBy?: string;
+}
+
+export interface ToolLog {
+  id: string;
+  toolId?: string;
+  toolDescription: string;
+  toolTypeSize: string;
+  action: 'Signed Out' | 'Returned' | 'Added' | 'Deleted' | string;
+  clockNumber?: string;
+  actionDate: string; // ISO timestamp
+  loggedBy?: string;
+}
+
+// Worksheet Dashboard Types
+export interface WorksheetEntry {
+  id: string;
+  pageNumber: number; // e.g. 305
+  bookNumber?: string; // e.g. "301-360"
+  machineId?: string; // Machine ID
+  machineSerialNumber?: string; // Serial / equipment tag
+  machineName?: string; // e.g. "Lathe #1"
+  clockNumber: string; // Employee / Operator clock number
+  operatorName?: string; // Operator name
+  jobDate: string; // YYYY-MM-DD
+  jobNumber: string; // e.g. "JOB-2026-001" or "JC-2026-001"
+  startTime: string; // HH:mm e.g. "07:30"
+  endTime: string; // HH:mm e.g. "11:45"
+  durationMinutes?: number; // Calculated elapsed time in minutes
+  durationHours?: number; // Calculated elapsed time in decimal hours
+  operation: string; // e.g. "Machining", "Turning", "Grinding", "Boring", "Fitting"
+  notes?: string;
+  capturedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface ComponentStep {
@@ -268,6 +303,12 @@ export interface JobCardFormatLabels {
   consumablesTitle: string;
   outsourcingTitle: string;
   page2Warning: string;
+  preQuoteNumberLabel?: string;
+  quotationDateLabel?: string;
+  estimatorLabel?: string;
+  validityLabel?: string;
+  repairScopeHeader?: string;
+  customerPriceHeader?: string;
 }
 
 export interface JobCardFormatConfig {
@@ -362,3 +403,44 @@ export const DEFAULT_JOB_CARD_FORMAT: JobCardFormatConfig = {
   footerNotePage2: "QUALITY CONTROL SIGN-OFF REQUIRED UPON COMPLETION"
 };
 
+/**
+ * Standard Machine Display Name Formatter
+ * Requirement: "When displaying machine name anywhere in dropdowns or labels, use the Machine number with Machine type, so if we are displaying M1, it should show M1 - Compressor."
+ */
+export function formatMachineDisplayName(machine?: {
+  serialNumber?: string;
+  machineNumber?: string;
+  machineName?: string;
+  machineType?: string;
+  make?: string;
+  model?: string;
+} | null): string {
+  if (!machine) return '';
+  const num = (machine.serialNumber || machine.machineNumber || '').trim();
+  const type = (machine.machineType || machine.machineName || machine.make || '').trim();
+  
+  if (num && type) {
+    if (type.toLowerCase().startsWith(num.toLowerCase())) {
+      return type;
+    }
+    return `${num} - ${type}`;
+  }
+  return num || type || 'Machine';
+}
+
+export function getMachineLabelByIdOrNumber(
+  identifier: string | undefined | null,
+  machines: Machine[] = []
+): string {
+  if (!identifier || identifier === 'ALL' || identifier === 'N/A') return identifier || '';
+  const found = machines.find(
+    (m) =>
+      m.id === identifier ||
+      m.serialNumber?.toLowerCase() === identifier.toLowerCase() ||
+      m.machineName?.toLowerCase() === identifier.toLowerCase()
+  );
+  if (found) {
+    return formatMachineDisplayName(found);
+  }
+  return identifier;
+}

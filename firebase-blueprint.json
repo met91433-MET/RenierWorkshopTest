@@ -249,6 +249,49 @@
         "loggedBy": { "type": "string" }
       },
       "required": ["id", "consumableId", "clockNumber", "jobNumber"]
+    },
+    "ToolLog": {
+      "title": "Tool Log",
+      "description": "Log of tool sign outs, returns, additions and deletions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "toolId": { "type": "string" },
+        "toolDescription": { "type": "string" },
+        "toolTypeSize": { "type": "string" },
+        "action": { "type": "string" },
+        "clockNumber": { "type": "string" },
+        "actionDate": { "type": "string" },
+        "loggedBy": { "type": "string" }
+      },
+      "required": ["id", "toolDescription", "action", "actionDate"]
+    },
+    "WorksheetEntry": {
+      "title": "Worksheet Entry",
+      "description": "Daily workshop timesheet entry per machine page, job number, clock number and operation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pageNumber": { "type": "number" },
+        "bookNumber": { "type": "string" },
+        "machineId": { "type": "string" },
+        "machineSerialNumber": { "type": "string" },
+        "machineName": { "type": "string" },
+        "clockNumber": { "type": "string" },
+        "operatorName": { "type": "string" },
+        "jobDate": { "type": "string" },
+        "jobNumber": { "type": "string" },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "durationHours": { "type": "number" },
+        "operation": { "type": "string" },
+        "notes": { "type": "string" },
+        "capturedBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "pageNumber", "clockNumber", "jobDate", "jobNumber", "startTime", "endTime", "operation"]
     }
   },
   "firestore": {
@@ -280,6 +323,10 @@
       "schema": "ToolStockItem",
       "description": "Tool stock items and sign out tracking"
     },
+    "/tool_logs/{logId}": {
+      "schema": "ToolLog",
+      "description": "Audit trail of tool sign outs, returns, additions and deletions"
+    },
     "/consumables/{consumableId}": {
       "schema": "ConsumableItem",
       "description": "Workshop consumable supplies"
@@ -287,6 +334,10 @@
     "/consumable_allocations/{allocationId}": {
       "schema": "ConsumableAllocationLog",
       "description": "Audit trail of consumable issues"
+    },
+    "/worksheet_entries/{entryId}": {
+      "schema": "WorksheetEntry",
+      "description": "Captured daily machine worksheet and timesheet log entries"
     }
   }
 }
