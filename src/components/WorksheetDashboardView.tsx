@@ -38,8 +38,12 @@ import {
   Timer, 
   Sparkles,
   Info,
-  X
+  X,
+  ArrowRight,
+  ListFilter,
+  History
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface WorksheetDashboardViewProps {
   jobs: Job[];
@@ -56,6 +60,9 @@ export default function WorksheetDashboardView({
   onSaveMachine,
   onSelectJob
 }: WorksheetDashboardViewProps) {
+  // Slider / Switcher Mode: 'capture' | 'logs'
+  const [activeWorksheetMode, setActiveWorksheetMode] = useState<'capture' | 'logs'>('capture');
+
   // Worksheet entries state
   const [entries, setEntries] = useState<WorksheetEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -453,6 +460,9 @@ export default function WorksheetDashboardView({
     setSelectedMachineId(entry.machineId || '');
     setManualBookNumber(entry.bookNumber || '');
 
+    // Switch to capture mode so user can edit in the capture form
+    setActiveWorksheetMode('capture');
+
     // Scroll to top of capture form
     window.scrollTo({ top: 0, behavior: 'smooth' });
     if (pageInputRef.current) {
@@ -645,13 +655,19 @@ export default function WorksheetDashboardView({
     filterCustomEndDate
   ]);
 
+  // Today's entries for quick review on Slider 1
+  const todayEntries = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return entries.filter((e) => e.jobDate === todayStr);
+  }, [entries]);
+
   // Summary statistics
   const stats = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
-    const todayEntries = entries.filter((e) => e.jobDate === todayStr);
+    const todayEntriesList = entries.filter((e) => e.jobDate === todayStr);
 
     const totalHoursAll = entries.reduce((sum, e) => sum + (e.durationHours || 0), 0);
-    const totalHoursToday = todayEntries.reduce((sum, e) => sum + (e.durationHours || 0), 0);
+    const totalHoursToday = todayEntriesList.reduce((sum, e) => sum + (e.durationHours || 0), 0);
 
     const uniqueJobs = new Set(entries.map((e) => e.jobNumber)).size;
     const uniqueMachinesWithBooks = machines.filter(
@@ -662,7 +678,7 @@ export default function WorksheetDashboardView({
 
     return {
       totalEntries: entries.length,
-      todayEntriesCount: todayEntries.length,
+      todayEntriesCount: todayEntriesList.length,
       totalHoursAll,
       totalHoursToday,
       uniqueJobs,
@@ -731,104 +747,65 @@ export default function WorksheetDashboardView({
   };
 
   return (
-    <div className="space-y-6 pb-12 font-sans text-slate-900" id="worksheet-dashboard-view">
-      {/* 1. TOP HEADER & METRIC SUMMARY CARDS */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 text-white p-3 rounded-xl shadow-xs">
-              <BookOpen className="w-6 h-6" />
+    <div className="space-y-6 pb-12 font-sans text-slate-900 text-left" id="worksheet-dashboard-view">
+      {/* 1. TOP HEADER BANNER & SLIDER SWITCHER */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col items-center justify-center gap-4 text-center">
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="flex items-center gap-2">
+            <div className="bg-blue-600 text-white p-2 rounded-xl shadow-xs">
+              <BookOpen className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-black tracking-tight text-slate-900 font-display">
-                  Worksheet Dashboard
-                </h1>
-                <span className="bg-blue-50 text-blue-700 font-extrabold text-[11px] px-2.5 py-0.5 rounded-full border border-blue-200">
-                  Daily Timesheet Capture
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Every machine has a dedicated numerical page book (e.g. 301-360). Capture morning workshop pages, operations, times and linked job cards.
-              </p>
-            </div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 font-display">
+              Worksheet Dashboard
+            </h1>
+            <span className="bg-blue-50 text-blue-700 font-extrabold text-[11px] px-2.5 py-0.5 rounded-full border border-blue-200">
+              Workshop Tracking
+            </span>
           </div>
-
-          {/* Quick Action Toolbar */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => setShowDedicatedBooksPanel(!showDedicatedBooksPanel)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
-                showDedicatedBooksPanel 
-                  ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
-                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              <span>Dedicated Machine Books ({allMachineBooks.length})</span>
-              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDedicatedBooksPanel ? 'rotate-180' : ''}`} />
-            </button>
-
-            <button
-              onClick={() => setShowNewBookModal(true)}
-              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Appoint Dedicated Book</span>
-            </button>
-
-            <button
-              onClick={handleExportCSV}
-              className="bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-              title="Export filtered records to CSV"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export CSV</span>
-            </button>
-
-            <button
-              onClick={handlePrint}
-              className="bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-              title="Print worksheet log report"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print</span>
-            </button>
-          </div>
+          <p className="text-xs text-slate-500 max-w-xl">
+            Capture morning workshop timesheet lines per dedicated numerical machine book and review full historical time records.
+          </p>
         </div>
 
-        {/* METRICS ROW */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4">
-          <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Today's Captures</span>
-              <Calendar className="w-4 h-4 text-blue-600" />
-            </div>
-            <p className="text-2xl font-black text-slate-900 mt-1 font-mono">{stats.todayEntriesCount}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">
-              {stats.totalHoursToday.toFixed(2)} workshop hrs logged today
-            </p>
-          </div>
+        {/* TOP SLIDER SWITCHER */}
+        <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 flex flex-wrap sm:flex-nowrap items-center gap-1.5 shrink-0 shadow-2xs">
+          {/* Slider 1: Worksheet Capture */}
+          <button
+            type="button"
+            onClick={() => setActiveWorksheetMode('capture')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              activeWorksheetMode === 'capture'
+                ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-700/20'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>Worksheet Capture</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+              activeWorksheetMode === 'capture' ? 'bg-blue-800 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {stats.todayEntriesCount} Today
+            </span>
+          </button>
 
-          <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Hours</span>
-              <Timer className="w-4 h-4 text-purple-600" />
-            </div>
-            <p className="text-2xl font-black text-purple-700 mt-1 font-mono">{stats.totalHoursAll.toFixed(2)}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Across {stats.totalEntries} total captured lines</p>
-          </div>
-
-          <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Machines with Books</span>
-              <Wrench className="w-4 h-4 text-emerald-600" />
-            </div>
-            <p className="text-2xl font-black text-emerald-700 mt-1 font-mono">
-              {stats.uniqueMachinesWithBooks} / {machines.length}
-            </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">{allMachineBooks.length} dedicated books appointed</p>
-          </div>
+          {/* Slider 2: Worksheet Logs */}
+          <button
+            type="button"
+            onClick={() => setActiveWorksheetMode('logs')}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+              activeWorksheetMode === 'logs'
+                ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-700/20'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Worksheet Logs</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+              activeWorksheetMode === 'logs' ? 'bg-indigo-800 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {entries.length} Total Lines
+            </span>
+          </button>
         </div>
       </div>
 
@@ -850,803 +827,961 @@ export default function WorksheetDashboardView({
         </div>
       )}
 
-      {/* 2. DEDICATED MACHINE BOOKS ACCORDION PANEL */}
-      {showDedicatedBooksPanel && (
-        <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 border border-slate-800 shadow-md">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
-            <div className="flex items-center gap-2.5">
-              <Layers className="w-5 h-5 text-blue-400" />
-              <div>
-                <h3 className="text-sm font-bold text-white">Dedicated Machine Timesheet Books Directory</h3>
-                <p className="text-[11px] text-slate-400">
-                  Each machine has a numerical range book (e.g. 301-360). When entering page 305, the system automatically routes to the dedicated machine.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowNewBookModal(true)}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Appoint New Book</span>
-            </button>
-          </div>
-
-          {allMachineBooks.length === 0 ? (
-            <div className="text-center py-6 bg-slate-850 rounded-xl border border-dashed border-slate-750">
-              <BookOpen className="w-8 h-8 mx-auto text-slate-600 mb-2" />
-              <p className="text-xs font-bold text-slate-300">No dedicated books appointed to machines yet</p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Click "Appoint New Book" to dedicate a numerical page range (e.g. 301-360) to a machine.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {allMachineBooks.map(({ machine, book }) => (
-                <div
-                  key={`${machine.id}-${book.id}`}
-                  className="bg-slate-850 rounded-xl p-3.5 border border-slate-750 flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono font-black text-amber-400 text-sm bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
-                        Book #{book.bookNumber || `${book.startPage}-${book.endPage}`}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 uppercase">
-                        {book.status || 'Active'}
-                      </span>
-                    </div>
-
-                    <div className="mt-2.5">
-                      <p className="text-xs font-bold text-white truncate">{formatMachineDisplayName(machine)}</p>
-                      <p className="text-[11px] font-mono text-blue-400">
-                        {machine.serialNumber} {machine.machineType ? `• ${machine.machineType}` : ''}
-                      </p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        {machine.make || 'Plant Equipment'} {machine.model ? `(${machine.model})` : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
-                    <span className="font-semibold text-slate-300">
-                      Pages: <strong className="font-mono text-amber-300">{book.startPage} – {book.endPage}</strong> ({Math.max(0, book.endPage - book.startPage + 1)} pgs)
-                    </span>
-                    <span>{book.dateAppointed ? new Date(book.dateAppointed).toLocaleDateString() : 'N/A'}</span>
-                  </div>
+      {/* SLIDER VIEW CONTENT WITH ANIMATION */}
+      <AnimatePresence mode="wait">
+        {activeWorksheetMode === 'capture' ? (
+          <motion.div
+            key="slider-capture"
+            initial={{ opacity: 0, x: -10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 10 }}
+            transition={{ duration: 0.15 }}
+            className="space-y-6"
+          >
+            {/* METRICS & QUICK ACTIONS ROW */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                    Capture Operations &amp; Machine Books
+                  </h3>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* 3. MORNING CAPTURE FORM (THE WORKHORSE) */}
-      <div className={`rounded-2xl border transition-all ${
-        editingEntry 
-          ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-200' 
-          : 'bg-white border-slate-200/90 shadow-xs'
-      } p-5`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3.5 mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className={`p-2 rounded-xl text-white ${editingEntry ? 'bg-amber-600' : 'bg-blue-600'}`}>
-              {editingEntry ? <Edit2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-slate-900">
-                {editingEntry ? 'Edit Captured Worksheet Line' : 'Morning Timesheet Capture Form'}
-              </h2>
-              <p className="text-[11px] text-slate-500">
-                Type Page Number, Clock Number, Job Date, Job Number, Times, and Operation.
-              </p>
-            </div>
-          </div>
-
-          {editingEntry && (
-            <button
-              onClick={handleCancelEdit}
-              className="text-xs font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Cancel Edit</span>
-            </button>
-          )}
-        </div>
-
-        <form onSubmit={(e) => handleSaveEntry(e, false)} className="space-y-4">
-          {/* TOP ROW: PAGE NUMBER (WITH AUTO-RESOLVER), CLOCK NUMBER, JOB DATE, JOB NUMBER */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {/* 1. Page Number & Auto Machine Link */}
-            <div>
-              <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
-                Page Number <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <input
-                  ref={pageInputRef}
-                  type="number"
-                  placeholder="e.g. 305"
-                  value={pageNumberInput}
-                  onChange={(e) => setPageNumberInput(e.target.value)}
-                  className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-extrabold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
-                  required
-                />
-              </div>
-
-              {/* AUTO-MATCHED MACHINE BADGE */}
-              {matchedBookInfo ? (
-                <div className="mt-1.5 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-lg p-1.5 text-[10px] flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <div className="truncate">
-                    <span className="font-extrabold text-emerald-800">
-                      Book #{matchedBookInfo.bookNumber}:
-                    </span>{' '}
-                    <span className="font-bold text-slate-800">{formatMachineDisplayName(matchedBookInfo.machine)}</span>
-                  </div>
-                </div>
-              ) : pageNumberInput.trim() ? (
-                <div className="mt-1.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg p-1.5 text-[10px] flex items-center justify-between">
-                  <div className="flex items-center gap-1 text-amber-800">
-                    <Info className="w-3 h-3 text-amber-600 shrink-0" />
-                    <span>No dedicated book found for page #{pageNumberInput}</span>
-                  </div>
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
-                    type="button"
-                    onClick={() => {
-                      setBookStartPage(pageNumberInput);
-                      setBookEndPage(String(parseInt(pageNumberInput, 10) + 59));
-                      setShowNewBookModal(true);
-                    }}
-                    className="text-[9px] font-extrabold text-blue-700 hover:underline cursor-pointer ml-1"
+                    onClick={() => setShowDedicatedBooksPanel(!showDedicatedBooksPanel)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border ${
+                      showDedicatedBooksPanel 
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs' 
+                        : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
                   >
-                    + Appoint Book
+                    <Layers className="w-4 h-4" />
+                    <span>Dedicated Machine Books ({allMachineBooks.length})</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDedicatedBooksPanel ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  <button
+                    onClick={() => setShowNewBookModal(true)}
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Appoint Dedicated Book</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveWorksheetMode('logs')}
+                    className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>View Full Logs ({entries.length})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              ) : null}
-            </div>
-
-            {/* 2. Clock Number (Employee) */}
-            <div>
-              <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
-                Clock Number <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                placeholder="e.g. 104, CK-402"
-                value={clockNumberInput}
-                onChange={(e) => setClockNumberInput(e.target.value)}
-                className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all uppercase"
-                required
-              />
-              {recentClockNumbers.length > 0 && (
-                <div className="flex items-center gap-1 mt-1 overflow-x-auto no-scrollbar">
-                  <span className="text-[9px] text-slate-400 font-bold shrink-0">Recent:</span>
-                  {recentClockNumbers.slice(0, 5).map((clk) => (
-                    <button
-                      key={clk}
-                      type="button"
-                      onClick={() => setClockNumberInput(clk)}
-                      className="text-[9px] font-mono bg-slate-100 hover:bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded cursor-pointer shrink-0"
-                    >
-                      {clk}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* 3. Job Date */}
-            <div>
-              <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
-                Job Date <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="date"
-                value={jobDateInput}
-                onChange={(e) => setJobDateInput(e.target.value)}
-                className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
-                required
-              />
-              <div className="flex items-center gap-1 mt-1">
-                <button
-                  type="button"
-                  onClick={() => setJobDateInput(new Date().toISOString().slice(0, 10))}
-                  className="text-[9px] font-bold text-blue-700 hover:underline cursor-pointer"
-                >
-                  Today
-                </button>
-                <span className="text-slate-300 text-[9px]">•</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const y = new Date();
-                    y.setDate(y.getDate() - 1);
-                    setJobDateInput(y.toISOString().slice(0, 10));
-                  }}
-                  className="text-[9px] font-bold text-slate-600 hover:underline cursor-pointer"
-                >
-                  Yesterday
-                </button>
-              </div>
-            </div>
-
-            {/* 4. Job Card Number (Dropdown containing only Active Job Cards) */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
-                  Active Job Card <span className="text-red-500">*</span>
-                </label>
-                <span className="text-[9px] font-bold text-slate-400">
-                  {activeJobCards.length} Active
-                </span>
-              </div>
-              <div className="relative">
-                <select
-                  value={jobNumberInput}
-                  onChange={(e) => handleJobCardSelect(e.target.value)}
-                  className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-blue-950 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all truncate"
-                  required
-                >
-                  <option value="">-- Select Active Job Card --</option>
-                  {activeJobCards.map((j) => (
-                    <option key={j.jobId} value={j.jobNumber}>
-                      {j.label}
-                    </option>
-                  ))}
-                  {/* If editing an existing entry whose job number is closed or not in active list, show fallback option */}
-                  {jobNumberInput && !activeJobCards.some((j) => j.jobNumber.toLowerCase() === jobNumberInput.trim().toLowerCase()) && (
-                    <option value={jobNumberInput}>
-                      {jobNumberInput} (Archived / Closed Job)
-                    </option>
-                  )}
-                </select>
               </div>
 
-              {/* SELECTED JOB CARD CONTEXT BADGE */}
-              {selectedJobCardInfo ? (
-                <div className="mt-1.5 bg-blue-50 text-blue-900 border border-blue-200 rounded-lg p-1.5 text-[10px] flex items-center justify-between">
-                  <div className="truncate">
-                    <span className="font-black text-blue-950">{selectedJobCardInfo.customerName}:</span>{' '}
-                    <span className="text-slate-700 font-medium">{selectedJobCardInfo.component}</span>{' '}
-                    {selectedJobCardInfo.serial && (
-                      <span className="font-mono text-slate-500 font-bold">({selectedJobCardInfo.serial})</span>
-                    )}
+              {/* KPI STATS */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3">
+                <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Today's Captures</span>
+                    <Calendar className="w-4 h-4 text-blue-600" />
                   </div>
-                  {onSelectJob && (
-                    <button
-                      type="button"
-                      onClick={() => onSelectJob(selectedJobCardInfo.job)}
-                      className="text-[9px] font-extrabold text-blue-700 hover:underline shrink-0 ml-1 cursor-pointer"
-                      title="View Job Card in Enquiries"
-                    >
-                      View ↗
-                    </button>
-                  )}
+                  <p className="text-2xl font-black text-slate-900 mt-1 font-mono">{stats.todayEntriesCount}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    {stats.totalHoursToday.toFixed(2)} workshop hrs logged today
+                  </p>
                 </div>
-              ) : activeJobCards.length === 0 ? (
-                <div className="mt-1.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg p-1.5 text-[10px] flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3 text-amber-600 shrink-0" />
-                  <span>No active job cards found. Create job cards in Stage 4 first.</span>
+
+                <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Hours (All Time)</span>
+                    <Timer className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <p className="text-2xl font-black text-purple-700 mt-1 font-mono">{stats.totalHoursAll.toFixed(2)}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Across {stats.totalEntries} total captured lines</p>
                 </div>
-              ) : null}
-            </div>
-          </div>
 
-          {/* SECOND ROW: START TIME, END TIME (WITH REAL-TIME DURATION), OPERATION (FROM JOB CARD STEPS), MACHINE SELECTOR OVERRIDE */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
-            {/* Start Time */}
-            <div>
-              <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
-                Start Time <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="time"
-                value={startTimeInput}
-                onChange={(e) => setStartTimeInput(e.target.value)}
-                className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
-                required
-              />
-            </div>
-
-            {/* End Time & Duration Badge */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
-                  End Time <span className="text-red-500">*</span>
-                </label>
-                <span className="text-[10px] font-mono font-extrabold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                  {currentDuration.formatted}
-                </span>
+                <div className="bg-slate-50/80 rounded-xl p-3.5 border border-slate-200/70">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Machines with Books</span>
+                    <Wrench className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <p className="text-2xl font-black text-emerald-700 mt-1 font-mono">
+                    {stats.uniqueMachinesWithBooks} / {machines.length}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{allMachineBooks.length} dedicated books appointed</p>
+                </div>
               </div>
-              <input
-                type="time"
-                value={endTimeInput}
-                onChange={(e) => setEndTimeInput(e.target.value)}
-                className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
-                required
-              />
             </div>
 
-            {/* Operation (Dropdown containing only steps from the selected Job Card) */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
-                  Operation Step <span className="text-red-500">*</span>
-                </label>
-                {selectedJobCardInfo && (
-                  <span className="text-[9px] font-bold text-slate-400">
-                    {selectedJobSteps.length} {selectedJobSteps.length === 1 ? 'Step' : 'Steps'}
-                  </span>
-                )}
-              </div>
-              <div className="relative">
-                <select
-                  value={operationInput}
-                  onChange={(e) => setOperationInput(e.target.value)}
-                  disabled={!selectedJobCardInfo}
-                  className={`w-full border rounded-xl px-3 py-2 text-xs font-bold transition-all focus:outline-hidden focus:ring-2 truncate ${
-                    !selectedJobCardInfo
-                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
-                      : 'bg-slate-50 focus:bg-white border-slate-300 focus:border-blue-500 text-slate-900 focus:ring-blue-100'
-                  }`}
-                  required
-                >
-                  {!selectedJobCardInfo ? (
-                    <option value="">-- Select Active Job Card First --</option>
-                  ) : selectedJobSteps.length === 0 ? (
-                    <option value="">-- No Steps Defined on Job Card --</option>
-                  ) : (
-                    <option value="">-- Select Operation Step --</option>
-                  )}
-                  {selectedJobSteps.map((step, idx) => (
-                    <option key={idx} value={step}>
-                      {idx + 1}. {step}
-                    </option>
-                  ))}
-                  {/* Fallback option if operation was already saved or custom */}
-                  {operationInput && !selectedJobSteps.some((s) => s.toLowerCase() === operationInput.trim().toLowerCase()) && (
-                    <option value={operationInput}>
-                      {operationInput} (Recorded Step)
-                    </option>
-                  )}
-                </select>
-              </div>
-              {!selectedJobCardInfo ? (
-                <p className="text-[9px] text-slate-400 mt-1">
-                  Select a job card to populate its operation steps.
-                </p>
-              ) : selectedJobSteps.length === 0 ? (
-                <p className="text-[9px] text-amber-600 font-medium mt-1 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3 shrink-0" />
-                  No procedures/steps configured on this job card.
-                </p>
-              ) : null}
-            </div>
+            {/* DEDICATED MACHINE BOOKS ACCORDION PANEL */}
+            {showDedicatedBooksPanel && (
+              <div className="bg-slate-900 text-slate-100 rounded-2xl p-5 border border-slate-800 shadow-md">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+                  <div className="flex items-center gap-2.5">
+                    <Layers className="w-5 h-5 text-blue-400" />
+                    <div>
+                      <h3 className="text-sm font-bold text-white">Dedicated Machine Timesheet Books Directory</h3>
+                      <p className="text-[11px] text-slate-400">
+                        Each machine has a numerical range book (e.g. 301-360). When entering page 305, the system automatically routes to the dedicated machine.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowNewBookModal(true)}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Appoint New Book</span>
+                  </button>
+                </div>
 
-            {/* Manual Machine / Book Override (if not auto-matched) */}
-            <div>
-              <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
-                Machine Assignment
-              </label>
-              <select
-                value={matchedBookInfo ? matchedBookInfo.machine.id : selectedMachineId}
-                onChange={(e) => setSelectedMachineId(e.target.value)}
-                className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
-              >
-                <option value="">-- {matchedBookInfo ? `Auto: ${formatMachineDisplayName(matchedBookInfo.machine)}` : 'Select Plant Machine'} --</option>
-                {machines.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {formatMachineDisplayName(m)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* THIRD ROW: OPTIONAL NOTES & SUBMISSION BUTTONS */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
-            <div className="flex-1 max-w-md">
-              <input
-                type="text"
-                placeholder="Optional notes / comments / work details..."
-                value={notesInput}
-                onChange={(e) => setNotesInput(e.target.value)}
-                className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-1.5 text-xs text-slate-800 focus:outline-hidden"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              {!editingEntry && (
-                <button
-                  type="button"
-                  disabled={isSaving}
-                  onClick={(e) => handleSaveEntry(e, true)}
-                  className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-                  title="Save this line and immediately prepare next page line"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Save &amp; Add Another</span>
-                </button>
-              )}
-
-              <button
-                type="submit"
-                disabled={isSaving}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
-              >
-                {isSaving ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                {allMachineBooks.length === 0 ? (
+                  <div className="text-center py-6 bg-slate-850 rounded-xl border border-dashed border-slate-750">
+                    <BookOpen className="w-8 h-8 mx-auto text-slate-600 mb-2" />
+                    <p className="text-xs font-bold text-slate-300">No dedicated books appointed to machines yet</p>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Click "Appoint New Book" to dedicate a numerical page range (e.g. 301-360) to a machine.
+                    </p>
+                  </div>
                 ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                )}
-                <span>{editingEntry ? 'Update Worksheet Line' : 'Save Worksheet Line'}</span>
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      {/* 4. FILTER & SEARCH CONTROL BAR */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          {/* Main Search */}
-          <div className="relative flex-1 max-w-md">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by page #, job #, clock #, machine, operation..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Quick Date Range Buttons */}
-          <div className="flex items-center gap-1 flex-wrap">
-            <span className="text-[11px] font-bold text-slate-400 uppercase mr-1">Date:</span>
-            {[
-              { id: 'all', label: 'All Time' },
-              { id: 'today', label: 'Today' },
-              { id: 'yesterday', label: 'Yesterday' },
-              { id: 'this_week', label: '7 Days' },
-              { id: 'this_month', label: 'This Month' },
-              { id: 'custom', label: 'Custom' }
-            ].map((d) => (
-              <button
-                key={d.id}
-                onClick={() => setFilterDateMode(d.id as any)}
-                className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                  filterDateMode === d.id
-                    ? 'bg-blue-600 text-white shadow-2xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* CUSTOM DATE RANGE PICKER (IF SELECTED) */}
-        {filterDateMode === 'custom' && (
-          <div className="flex items-center gap-2 p-2.5 bg-blue-50/60 rounded-xl border border-blue-100 text-xs">
-            <span className="font-bold text-blue-900">Custom Date Range:</span>
-            <input
-              type="date"
-              value={filterCustomStartDate}
-              onChange={(e) => setFilterCustomStartDate(e.target.value)}
-              className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs"
-            />
-            <span className="text-slate-400">to</span>
-            <input
-              type="date"
-              value={filterCustomEndDate}
-              onChange={(e) => setFilterCustomEndDate(e.target.value)}
-              className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs"
-            />
-          </div>
-        )}
-
-        {/* SECONDARY FILTER CHIPS: PAGE NUMBER, JOB NUMBER, MACHINE, CLOCK #, OPERATION */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-100 text-xs">
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Page #</label>
-            <input
-              type="text"
-              placeholder="e.g. 305 or 301-360"
-              value={filterPageNumber}
-              onChange={(e) => setFilterPageNumber(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Job #</label>
-            <input
-              type="text"
-              placeholder="e.g. JOB-..."
-              value={filterJobNumber}
-              onChange={(e) => setFilterJobNumber(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Machine</label>
-            <select
-              value={filterMachineId}
-              onChange={(e) => setFilterMachineId(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"
-            >
-              <option value="ALL">All Machines</option>
-              {machines.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {formatMachineDisplayName(m)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Clock #</label>
-            <input
-              type="text"
-              placeholder="e.g. 104"
-              value={filterClockNumber}
-              onChange={(e) => setFilterClockNumber(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Operation</label>
-            <select
-              value={filterOperation}
-              onChange={(e) => setFilterOperation(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"
-            >
-              <option value="ALL">All Operations</option>
-              {availableFilterOperations.map((op) => (
-                <option key={op} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* ACTIVE FILTER SUMMARY & RESET */}
-        {(searchQuery || filterPageNumber || filterJobNumber || filterMachineId !== 'ALL' || filterClockNumber || filterOperation !== 'ALL' || filterDateMode !== 'all') && (
-          <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-            <span className="text-slate-500 font-medium">
-              Showing <strong className="text-slate-900 font-bold">{filteredEntries.length}</strong> of{' '}
-              <strong className="text-slate-900 font-bold">{entries.length}</strong> total lines (
-              <strong className="font-mono text-purple-700">{stats.filteredHours.toFixed(2)} hrs</strong>)
-            </span>
-            <button
-              onClick={() => {
-                setSearchQuery('');
-                setFilterPageNumber('');
-                setFilterJobNumber('');
-                setFilterMachineId('ALL');
-                setFilterClockNumber('');
-                setFilterOperation('ALL');
-                setFilterDateMode('all');
-                setFilterCustomStartDate('');
-                setFilterCustomEndDate('');
-              }}
-              className="text-blue-600 hover:text-blue-800 font-bold cursor-pointer hover:underline text-[11px]"
-            >
-              Reset All Filters
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* 5. WORKSHEET TABLE (DISPLAY EVERY LINE PER DASHBOARD) */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div className="flex items-center gap-2">
-            <FileSpreadsheet className="w-4 h-4 text-blue-600" />
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
-              Captured Worksheet Timesheet Log ({filteredEntries.length})
-            </h3>
-          </div>
-          <div className="text-[11px] font-mono text-slate-500 font-bold">
-            Total Elapsed: <span className="text-purple-700 font-black">{stats.filteredHours.toFixed(2)} Hours</span>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="text-center py-12 text-slate-400 text-xs font-medium">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
-            Loading worksheet timesheet entries...
-          </div>
-        ) : filteredEntries.length === 0 ? (
-          <div className="text-center py-12 px-4 bg-slate-50/50">
-            <Clock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h4 className="text-xs font-bold text-slate-700">No worksheet lines found</h4>
-            <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
-              {entries.length === 0 
-                ? 'Use the capture form above to type in the morning page number, clock number, times and operation.' 
-                : 'No entries match your current search and filter criteria.'}
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-600 border-collapse">
-              <thead>
-                <tr className="bg-slate-100/70 text-slate-600 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                  <th className="p-3">Date</th>
-                  <th className="p-3">Page #</th>
-                  <th className="p-3">Dedicated Book &amp; Machine</th>
-                  <th className="p-3">Clock #</th>
-                  <th className="p-3">Job Number</th>
-                  <th className="p-3">Operation</th>
-                  <th className="p-3">Time Range</th>
-                  <th className="p-3 text-center">Duration</th>
-                  <th className="p-3">Captured By / Notes</th>
-                  <th className="p-3 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredEntries.map((entry) => {
-                  const isBeingEdited = editingEntry?.id === entry.id;
-                  const durationFmt = calculateDuration(entry.startTime, entry.endTime);
-
-                  return (
-                    <tr
-                      key={entry.id}
-                      className={`transition-colors ${
-                        isBeingEdited
-                          ? 'bg-amber-50/80 font-semibold'
-                          : 'hover:bg-blue-50/30'
-                      }`}
-                    >
-                      {/* 1. Job Date */}
-                      <td className="p-3 whitespace-nowrap">
-                        <div className="font-bold text-slate-900 font-mono text-[11px]">
-                          {entry.jobDate}
-                        </div>
-                      </td>
-
-                      {/* 2. Page Number */}
-                      <td className="p-3 whitespace-nowrap">
-                        <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/80">
-                          p. {entry.pageNumber}
-                        </span>
-                      </td>
-
-                      {/* 3. Dedicated Book & Machine */}
-                      <td className="p-3">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {entry.bookNumber && (
-                            <span className="font-mono text-[10px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
-                              {entry.bookNumber.startsWith('Book') ? entry.bookNumber : `Book #${entry.bookNumber}`}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {allMachineBooks.map(({ machine, book }) => (
+                      <div
+                        key={`${machine.id}-${book.id}`}
+                        className="bg-slate-850 rounded-xl p-3.5 border border-slate-750 flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono font-black text-amber-400 text-sm bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
+                              Book #{book.bookNumber || `${book.startPage}-${book.endPage}`}
                             </span>
-                          )}
-                          <span className="font-bold text-slate-800 text-xs">
-                            {getMachineLabelByIdOrNumber(entry.machineId || entry.machineSerialNumber || entry.machineName, machines)}
-                          </span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 uppercase">
+                              {book.status || 'Active'}
+                            </span>
+                          </div>
+
+                          <div className="mt-2.5">
+                            <p className="text-xs font-bold text-white truncate">{formatMachineDisplayName(machine)}</p>
+                            <p className="text-[11px] font-mono text-blue-400">
+                              {machine.serialNumber} {machine.machineType ? `• ${machine.machineType}` : ''}
+                            </p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {machine.make || 'Plant Equipment'} {machine.model ? `(${machine.model})` : ''}
+                            </p>
+                          </div>
                         </div>
-                      </td>
 
-                      {/* 4. Clock Number */}
-                      <td className="p-3 whitespace-nowrap">
-                        <span className="font-mono font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-[11px] border border-slate-200">
-                          {entry.clockNumber}
-                        </span>
-                      </td>
+                        <div className="mt-3 pt-2.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400">
+                          <span className="font-semibold text-slate-300">
+                            Pages: <strong className="font-mono text-amber-300">{book.startPage} – {book.endPage}</strong> ({Math.max(0, book.endPage - book.startPage + 1)} pgs)
+                          </span>
+                          <span>{book.dateAppointed ? new Date(book.dateAppointed).toLocaleDateString() : 'N/A'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
-                      {/* 5. Job Number */}
-                      <td className="p-3 whitespace-nowrap">
+            {/* MORNING CAPTURE FORM (THE WORKHORSE) */}
+            <div className={`rounded-2xl border transition-all ${
+              editingEntry 
+                ? 'bg-amber-50/50 border-amber-300 ring-2 ring-amber-200' 
+                : 'bg-white border-slate-200/90 shadow-xs'
+            } p-5`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3.5 mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-xl text-white ${editingEntry ? 'bg-amber-600' : 'bg-blue-600'}`}>
+                    {editingEntry ? <Edit2 className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">
+                      {editingEntry ? 'Edit Captured Worksheet Line' : 'Morning Timesheet Capture Form'}
+                    </h2>
+                    <p className="text-[11px] text-slate-500">
+                      Type Page Number, Clock Number, Job Date, Job Number, Times, and Operation.
+                    </p>
+                  </div>
+                </div>
+
+                {editingEntry && (
+                  <button
+                    onClick={handleCancelEdit}
+                    className="text-xs font-bold text-slate-500 hover:text-slate-800 bg-white border border-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-1 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Cancel Edit</span>
+                  </button>
+                )}
+              </div>
+
+              <form onSubmit={(e) => handleSaveEntry(e, false)} className="space-y-4">
+                {/* TOP ROW: PAGE NUMBER (WITH AUTO-RESOLVER), CLOCK NUMBER, JOB DATE, JOB NUMBER */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  {/* 1. Page Number & Auto Machine Link */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
+                      Page Number <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        ref={pageInputRef}
+                        type="number"
+                        placeholder="e.g. 305"
+                        value={pageNumberInput}
+                        onChange={(e) => setPageNumberInput(e.target.value)}
+                        className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-extrabold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
+                        required
+                      />
+                    </div>
+
+                    {/* AUTO-MATCHED MACHINE BADGE */}
+                    {matchedBookInfo ? (
+                      <div className="mt-1.5 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-lg p-1.5 text-[10px] flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <div className="truncate">
+                          <span className="font-extrabold text-emerald-800">
+                            Book #{matchedBookInfo.bookNumber}:
+                          </span>{' '}
+                          <span className="font-bold text-slate-800">{formatMachineDisplayName(matchedBookInfo.machine)}</span>
+                        </div>
+                      </div>
+                    ) : pageNumberInput.trim() ? (
+                      <div className="mt-1.5 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg p-1.5 text-[10px] flex items-center justify-between">
+                        <div className="flex items-center gap-1 text-amber-800">
+                          <Info className="w-3 h-3 text-amber-600 shrink-0" />
+                          <span>No dedicated book found for page #{pageNumberInput}</span>
+                        </div>
                         <button
                           type="button"
                           onClick={() => {
-                            const matchedJob = jobs.find(
-                              (j) =>
-                                j.id === entry.jobNumber ||
-                                j.jobCardDetails?.jobCardNumber === entry.jobNumber
-                            );
-                            if (matchedJob && onSelectJob) {
-                              onSelectJob(matchedJob);
-                            }
+                            setBookStartPage(pageNumberInput);
+                            setBookEndPage(String(parseInt(pageNumberInput, 10) + 59));
+                            setShowNewBookModal(true);
                           }}
-                          className="font-mono font-black text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md border border-blue-200/80 text-[11px] transition-colors cursor-pointer text-left"
-                          title="Click to view related Job Card"
+                          className="text-[9px] font-extrabold text-blue-700 hover:underline cursor-pointer ml-1"
                         >
-                          #{entry.jobNumber}
+                          + Appoint Book
                         </button>
-                      </td>
+                      </div>
+                    ) : null}
+                  </div>
 
-                      {/* 6. Operation */}
-                      <td className="p-3">
-                        <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">
-                          {entry.operation}
-                        </span>
-                      </td>
-
-                      {/* 7. Time Range */}
-                      <td className="p-3 whitespace-nowrap font-mono text-xs text-slate-700">
-                        <span>{entry.startTime}</span>
-                        <span className="text-slate-400 mx-1.5">→</span>
-                        <span>{entry.endTime}</span>
-                      </td>
-
-                      {/* 8. Duration */}
-                      <td className="p-3 text-center whitespace-nowrap">
-                        <span className="font-mono font-black text-xs text-purple-700 bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200">
-                          {entry.durationHours ? `${entry.durationHours.toFixed(2)} hrs` : durationFmt.formatted}
-                        </span>
-                      </td>
-
-                      {/* 9. Captured By & Notes */}
-                      <td className="p-3 max-w-xs">
-                        {entry.notes ? (
-                          <div className="text-xs text-slate-700 truncate" title={entry.notes}>
-                            {entry.notes}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-[11px] italic">No notes</span>
-                        )}
-                        <div className="text-[10px] text-slate-400 mt-0.5">
-                          By {entry.capturedBy || 'Operator'}
-                        </div>
-                      </td>
-
-                      {/* 10. Actions */}
-                      <td className="p-3 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1.5">
+                  {/* 2. Clock Number (Employee) */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
+                      Clock Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 104, CK-402"
+                      value={clockNumberInput}
+                      onChange={(e) => setClockNumberInput(e.target.value)}
+                      className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all uppercase"
+                      required
+                    />
+                    {recentClockNumbers.length > 0 && (
+                      <div className="flex items-center gap-1 mt-1 overflow-x-auto no-scrollbar">
+                        <span className="text-[9px] text-slate-400 font-bold shrink-0">Recent:</span>
+                        {recentClockNumbers.slice(0, 5).map((clk) => (
                           <button
-                            onClick={() => handleStartEdit(entry)}
-                            className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            title="Edit worksheet line"
+                            key={clk}
+                            type="button"
+                            onClick={() => setClockNumberInput(clk)}
+                            className="text-[9px] font-mono bg-slate-100 hover:bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded cursor-pointer shrink-0"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            {clk}
                           </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                          {deleteConfirmId === entry.id ? (
-                            <div className="flex items-center gap-1 bg-red-50 p-1 rounded-lg border border-red-200">
-                              <button
-                                onClick={() => handleDeleteEntry(entry.id)}
-                                className="px-2 py-0.5 bg-red-600 text-white rounded text-[10px] font-bold cursor-pointer hover:bg-red-700"
-                              >
-                                Confirm
-                              </button>
-                              <button
-                                onClick={() => setDeleteConfirmId(null)}
-                                className="px-1.5 py-0.5 text-slate-600 rounded text-[10px] font-bold cursor-pointer"
-                              >
-                                Cancel
+                  {/* 3. Job Date */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
+                      Job Date <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={jobDateInput}
+                      onChange={(e) => setJobDateInput(e.target.value)}
+                      className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
+                      required
+                    />
+                    <div className="flex items-center gap-1 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setJobDateInput(new Date().toISOString().slice(0, 10))}
+                        className="text-[9px] font-bold text-blue-700 hover:underline cursor-pointer"
+                      >
+                        Today
+                      </button>
+                      <span className="text-slate-300 text-[9px]">•</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const y = new Date();
+                          y.setDate(y.getDate() - 1);
+                          setJobDateInput(y.toISOString().slice(0, 10));
+                        }}
+                        className="text-[9px] font-bold text-slate-600 hover:underline cursor-pointer"
+                      >
+                        Yesterday
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 4. Job Number */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
+                      Job Number <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={jobNumberInput}
+                        onChange={(e) => handleJobCardSelect(e.target.value)}
+                        className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-blue-950 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all truncate"
+                        required
+                      >
+                        <option value="">-- Select Job Number --</option>
+                        {activeJobCards.map((j) => (
+                          <option key={j.jobId} value={j.jobNumber}>
+                            {j.jobNumber} {j.customerName ? `(${j.customerName})` : ''}
+                          </option>
+                        ))}
+                        {jobNumberInput && !activeJobCards.some((j) => j.jobNumber.toLowerCase() === jobNumberInput.trim().toLowerCase()) && (
+                          <option value={jobNumberInput}>
+                            {jobNumberInput} (Archived / Closed Job)
+                          </option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECOND ROW: START TIME, END TIME (WITH REAL-TIME DURATION), OPERATION, MACHINE SELECTOR */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 pt-1">
+                  {/* Start Time */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
+                      Start Time <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="time"
+                      value={startTimeInput}
+                      onChange={(e) => setStartTimeInput(e.target.value)}
+                      className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
+                      required
+                    />
+                  </div>
+
+                  {/* End Time & Duration Badge */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+                        End Time <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[10px] font-mono font-extrabold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                        {currentDuration.formatted}
+                      </span>
+                    </div>
+                    <input
+                      type="time"
+                      value={endTimeInput}
+                      onChange={(e) => setEndTimeInput(e.target.value)}
+                      className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
+                      required
+                    />
+                  </div>
+
+                  {/* Operation */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
+                      Operation <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={operationInput}
+                        onChange={(e) => setOperationInput(e.target.value)}
+                        disabled={!jobNumberInput}
+                        className={`w-full border rounded-xl px-3 py-2 text-xs font-bold transition-all focus:outline-hidden focus:ring-2 truncate ${
+                          !jobNumberInput
+                            ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                            : 'bg-slate-50 focus:bg-white border-slate-300 focus:border-blue-500 text-slate-900 focus:ring-blue-100'
+                        }`}
+                        required
+                      >
+                        {!jobNumberInput ? (
+                          <option value="">-- Select Job First --</option>
+                        ) : selectedJobSteps.length === 0 ? (
+                          <option value="">-- Select Operation --</option>
+                        ) : (
+                          <option value="">-- Select Operation Step --</option>
+                        )}
+                        {selectedJobSteps.map((step, idx) => (
+                          <option key={idx} value={step}>
+                            {idx + 1}. {step}
+                          </option>
+                        ))}
+                        {operationInput && !selectedJobSteps.some((s) => s.toLowerCase() === operationInput.trim().toLowerCase()) && (
+                          <option value={operationInput}>
+                            {operationInput}
+                          </option>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Machine Assignment */}
+                  <div>
+                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
+                      Machine Assignment
+                    </label>
+                    <select
+                      value={matchedBookInfo ? matchedBookInfo.machine.id : selectedMachineId}
+                      onChange={(e) => setSelectedMachineId(e.target.value)}
+                      className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all"
+                    >
+                      <option value="">-- {matchedBookInfo ? `Auto: ${formatMachineDisplayName(matchedBookInfo.machine)}` : 'Select Plant Machine'} --</option>
+                      {machines.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {formatMachineDisplayName(m)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* THIRD ROW: OPTIONAL NOTES & SUBMISSION BUTTONS */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+                  <div className="flex-1 max-w-md">
+                    <input
+                      type="text"
+                      placeholder="Optional notes / comments / work details..."
+                      value={notesInput}
+                      onChange={(e) => setNotesInput(e.target.value)}
+                      className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-slate-400 rounded-xl px-3 py-1.5 text-xs text-slate-800 focus:outline-hidden"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!editingEntry && (
+                      <button
+                        type="button"
+                        disabled={isSaving}
+                        onClick={(e) => handleSaveEntry(e, true)}
+                        className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                        title="Save this line and immediately prepare next page line"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Save &amp; Add Another</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                    >
+                      {isSaving ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      )}
+                      <span>{editingEntry ? 'Update Worksheet Line' : 'Save Worksheet Line'}</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            {/* TODAY'S CAPTURES QUICK LIST (SLIDER 1 SUMMARY) */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-4 space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <History className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                    Today's Captured Lines ({todayEntries.length})
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveWorksheetMode('logs')}
+                  className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 cursor-pointer"
+                >
+                  <span>Open Full Logs ({entries.length})</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {todayEntries.length === 0 ? (
+                <div className="text-center py-6 text-slate-400 text-xs">
+                  <Clock className="w-6 h-6 mx-auto mb-1 text-slate-300" />
+                  <span>No lines recorded yet today ({new Date().toLocaleDateString()}). Use the form above to capture workshop entries.</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/70 text-slate-600 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                        <th className="p-2.5">Page #</th>
+                        <th className="p-2.5">Dedicated Machine</th>
+                        <th className="p-2.5">Clock #</th>
+                        <th className="p-2.5">Job #</th>
+                        <th className="p-2.5">Operation</th>
+                        <th className="p-2.5">Time Range</th>
+                        <th className="p-2.5 text-center">Duration</th>
+                        <th className="p-2.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {todayEntries.map((entry) => (
+                        <tr key={entry.id} className="hover:bg-blue-50/30">
+                          <td className="p-2.5 font-mono font-bold text-slate-900">p. {entry.pageNumber}</td>
+                          <td className="p-2.5 font-bold text-slate-800">{getMachineLabelByIdOrNumber(entry.machineId || entry.machineSerialNumber || entry.machineName, machines)}</td>
+                          <td className="p-2.5 font-mono text-slate-900">{entry.clockNumber}</td>
+                          <td className="p-2.5 font-mono font-black text-blue-700">#{entry.jobNumber}</td>
+                          <td className="p-2.5 font-semibold text-slate-800">{entry.operation}</td>
+                          <td className="p-2.5 font-mono text-slate-600">{entry.startTime} → {entry.endTime}</td>
+                          <td className="p-2.5 text-center font-mono font-bold text-purple-700">{entry.durationHours ? `${entry.durationHours.toFixed(2)} hrs` : '—'}</td>
+                          <td className="p-2.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button onClick={() => handleStartEdit(entry)} className="p-1 text-slate-500 hover:text-blue-700 cursor-pointer" title="Edit line">
+                                <Edit2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
-                          ) : (
-                            <button
-                              onClick={() => setDeleteConfirmId(entry.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                              title="Delete worksheet line"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="slider-logs"
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.15 }}
+            className="space-y-6"
+          >
+            {/* LOGS HEADER BAR */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="bg-indigo-600 text-white p-2 rounded-xl shadow-xs">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">
+                    Complete Worksheet Timesheet Logs
+                  </h2>
+                  <p className="text-[11px] text-slate-500">
+                    Historical captured timesheet lines from all machines and page books.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={handleExportCSV}
+                  className="bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Export filtered records to CSV"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export CSV</span>
+                </button>
+
+                <button
+                  onClick={handlePrint}
+                  className="bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Print worksheet log report"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveWorksheetMode('capture')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Capture New Line</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4. FILTER & SEARCH CONTROL BAR */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-xs space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                {/* Main Search */}
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search by page #, job #, clock #, machine, operation..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-slate-50 focus:bg-white border border-slate-200 focus:border-blue-500 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-100"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Date Range Buttons */}
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase mr-1">Date:</span>
+                  {[
+                    { id: 'all', label: 'All Time' },
+                    { id: 'today', label: 'Today' },
+                    { id: 'yesterday', label: 'Yesterday' },
+                    { id: 'this_week', label: '7 Days' },
+                    { id: 'this_month', label: 'This Month' },
+                    { id: 'custom', label: 'Custom' }
+                  ].map((d) => (
+                    <button
+                      key={d.id}
+                      onClick={() => setFilterDateMode(d.id as any)}
+                      className={`text-xs font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                        filterDateMode === d.id
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* CUSTOM DATE RANGE PICKER (IF SELECTED) */}
+              {filterDateMode === 'custom' && (
+                <div className="flex items-center gap-2 p-2.5 bg-blue-50/60 rounded-xl border border-blue-100 text-xs">
+                  <span className="font-bold text-blue-900">Custom Date Range:</span>
+                  <input
+                    type="date"
+                    value={filterCustomStartDate}
+                    onChange={(e) => setFilterCustomStartDate(e.target.value)}
+                    className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs"
+                  />
+                  <span className="text-slate-400">to</span>
+                  <input
+                    type="date"
+                    value={filterCustomEndDate}
+                    onChange={(e) => setFilterCustomEndDate(e.target.value)}
+                    className="bg-white border border-slate-300 rounded-lg px-2 py-1 text-xs"
+                  />
+                </div>
+              )}
+
+              {/* SECONDARY FILTER CHIPS: PAGE NUMBER, JOB NUMBER, MACHINE, CLOCK #, OPERATION */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-2 border-t border-slate-100 text-xs">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Page #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 305 or 301-360"
+                    value={filterPageNumber}
+                    onChange={(e) => setFilterPageNumber(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Job #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. JOB-..."
+                    value={filterJobNumber}
+                    onChange={(e) => setFilterJobNumber(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Machine</label>
+                  <select
+                    value={filterMachineId}
+                    onChange={(e) => setFilterMachineId(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"
+                  >
+                    <option value="ALL">All Machines</option>
+                    {machines.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {formatMachineDisplayName(m)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Clock #</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 104"
+                    value={filterClockNumber}
+                    onChange={(e) => setFilterClockNumber(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Filter Operation</label>
+                  <select
+                    value={filterOperation}
+                    onChange={(e) => setFilterOperation(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"
+                  >
+                    <option value="ALL">All Operations</option>
+                    {availableFilterOperations.map((op) => (
+                      <option key={op} value={op}>
+                        {op}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* ACTIVE FILTER SUMMARY & RESET */}
+              {(searchQuery || filterPageNumber || filterJobNumber || filterMachineId !== 'ALL' || filterClockNumber || filterOperation !== 'ALL' || filterDateMode !== 'all') && (
+                <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">
+                  <span className="text-slate-500 font-medium">
+                    Showing <strong className="text-slate-900 font-bold">{filteredEntries.length}</strong> of{' '}
+                    <strong className="text-slate-900 font-bold">{entries.length}</strong> total lines (
+                    <strong className="font-mono text-purple-700">{stats.filteredHours.toFixed(2)} hrs</strong>)
+                  </span>
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setFilterPageNumber('');
+                      setFilterJobNumber('');
+                      setFilterMachineId('ALL');
+                      setFilterClockNumber('');
+                      setFilterOperation('ALL');
+                      setFilterDateMode('all');
+                      setFilterCustomStartDate('');
+                      setFilterCustomEndDate('');
+                    }}
+                    className="text-blue-600 hover:text-blue-800 font-bold cursor-pointer hover:underline text-[11px]"
+                  >
+                    Reset All Filters
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 5. WORKSHEET TABLE (DISPLAY EVERY LINE PER DASHBOARD) */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                    Captured Worksheet Timesheet Log ({filteredEntries.length})
+                  </h3>
+                </div>
+                <div className="text-[11px] font-mono text-slate-500 font-bold">
+                  Total Elapsed: <span className="text-purple-700 font-black">{stats.filteredHours.toFixed(2)} Hours</span>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="text-center py-12 text-slate-400 text-xs font-medium">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-blue-600" />
+                  Loading worksheet timesheet entries...
+                </div>
+              ) : filteredEntries.length === 0 ? (
+                <div className="text-center py-12 px-4 bg-slate-50/50">
+                  <Clock className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <h4 className="text-xs font-bold text-slate-700">No worksheet lines found</h4>
+                  <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+                    {entries.length === 0 
+                      ? 'Use the capture form in Worksheet Capture to record morning workshop timesheet entries.' 
+                      : 'No entries match your current search and filter criteria.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                    <thead>
+                      <tr className="bg-slate-100/70 text-slate-600 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                        <th className="p-3">Date</th>
+                        <th className="p-3">Page #</th>
+                        <th className="p-3">Dedicated Book &amp; Machine</th>
+                        <th className="p-3">Clock #</th>
+                        <th className="p-3">Job Number</th>
+                        <th className="p-3">Operation</th>
+                        <th className="p-3">Time Range</th>
+                        <th className="p-3 text-center">Duration</th>
+                        <th className="p-3">Captured By / Notes</th>
+                        <th className="p-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {filteredEntries.map((entry) => {
+                        const isBeingEdited = editingEntry?.id === entry.id;
+                        const durationFmt = calculateDuration(entry.startTime, entry.endTime);
+
+                        return (
+                          <tr
+                            key={entry.id}
+                            className={`transition-colors ${
+                              isBeingEdited
+                                ? 'bg-amber-50/80 font-semibold'
+                                : 'hover:bg-blue-50/30'
+                            }`}
+                          >
+                            {/* 1. Job Date */}
+                            <td className="p-3 whitespace-nowrap">
+                              <div className="font-bold text-slate-900 font-mono text-[11px]">
+                                {entry.jobDate}
+                              </div>
+                            </td>
+
+                            {/* 2. Page Number */}
+                            <td className="p-3 whitespace-nowrap">
+                              <span className="font-mono font-black text-xs text-slate-900 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/80">
+                                p. {entry.pageNumber}
+                              </span>
+                            </td>
+
+                            {/* 3. Dedicated Book & Machine */}
+                            <td className="p-3">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {entry.bookNumber && (
+                                  <span className="font-mono text-[10px] font-extrabold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                                    {entry.bookNumber.startsWith('Book') ? entry.bookNumber : `Book #${entry.bookNumber}`}
+                                  </span>
+                                )}
+                                <span className="font-bold text-slate-800 text-xs">
+                                  {getMachineLabelByIdOrNumber(entry.machineId || entry.machineSerialNumber || entry.machineName, machines)}
+                                </span>
+                              </div>
+                            </td>
+
+                            {/* 4. Clock Number */}
+                            <td className="p-3 whitespace-nowrap">
+                              <span className="font-mono font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-[11px] border border-slate-200">
+                                {entry.clockNumber}
+                              </span>
+                            </td>
+
+                            {/* 5. Job Number */}
+                            <td className="p-3 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const matchedJob = jobs.find(
+                                    (j) =>
+                                      j.id === entry.jobNumber ||
+                                      j.jobCardDetails?.jobCardNumber === entry.jobNumber
+                                  );
+                                  if (matchedJob && onSelectJob) {
+                                    onSelectJob(matchedJob);
+                                  }
+                                }}
+                                className="font-mono font-black text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-md border border-blue-200/80 text-[11px] transition-colors cursor-pointer text-left"
+                                title="Click to view related Job Card"
+                              >
+                                #{entry.jobNumber}
+                              </button>
+                            </td>
+
+                            {/* 6. Operation */}
+                            <td className="p-3">
+                              <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-100 text-slate-800 border border-slate-200">
+                                {entry.operation}
+                              </span>
+                            </td>
+
+                            {/* 7. Time Range */}
+                            <td className="p-3 whitespace-nowrap font-mono text-xs text-slate-700">
+                              <span>{entry.startTime}</span>
+                              <span className="text-slate-400 mx-1.5">→</span>
+                              <span>{entry.endTime}</span>
+                            </td>
+
+                            {/* 8. Duration */}
+                            <td className="p-3 text-center whitespace-nowrap">
+                              <span className="font-mono font-black text-xs text-purple-700 bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200">
+                                {entry.durationHours ? `${entry.durationHours.toFixed(2)} hrs` : durationFmt.formatted}
+                              </span>
+                            </td>
+
+                            {/* 9. Captured By & Notes */}
+                            <td className="p-3 max-w-xs">
+                              {entry.notes ? (
+                                <div className="text-xs text-slate-700 truncate" title={entry.notes}>
+                                  {entry.notes}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-[11px] italic">No notes</span>
+                              )}
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                By {entry.capturedBy || 'Operator'}
+                              </div>
+                            </td>
+
+                            {/* 10. Actions */}
+                            <td className="p-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => handleStartEdit(entry)}
+                                  className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Edit worksheet line (switches to Capture view)"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+
+                                {deleteConfirmId === entry.id ? (
+                                  <div className="flex items-center gap-1 bg-red-50 p-1 rounded-lg border border-red-200">
+                                    <button
+                                      onClick={() => handleDeleteEntry(entry.id)}
+                                      className="px-2 py-0.5 bg-red-600 text-white rounded text-[10px] font-bold cursor-pointer hover:bg-red-700"
+                                    >
+                                      Confirm
+                                    </button>
+                                    <button
+                                      onClick={() => setDeleteConfirmId(null)}
+                                      className="px-1.5 py-0.5 text-slate-600 rounded text-[10px] font-bold cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setDeleteConfirmId(entry.id)}
+                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Delete worksheet line"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </motion.div>
         )}
-      </div>
+      </AnimatePresence>
 
       {/* 6. MODAL: APPOINT DEDICATED BOOK TO MACHINE */}
       {showNewBookModal && (

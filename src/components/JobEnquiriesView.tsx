@@ -103,8 +103,8 @@ export default function JobEnquiriesView({
     setSelectedPreQuoteGroup(group);
   };
 
-  // Modal active sub-tab: 'overview' | 'pictures' | 'reprint' | 'close' | 'goAhead'
-  const [modalTab, setModalTab] = useState<'overview' | 'pictures' | 'reprint' | 'close' | 'goAhead'>('overview');
+  // Modal active sub-tab: 'overview' | 'worksheet' | 'pictures' | 'reprint' | 'close' | 'goAhead'
+  const [modalTab, setModalTab] = useState<'overview' | 'worksheet' | 'pictures' | 'reprint' | 'close' | 'goAhead'>('overview');
 
   // Consumable Allocation Logs State for Job Cards
   const [consumableLogs, setConsumableLogs] = useState<ConsumableAllocationLog[]>([]);
@@ -172,6 +172,95 @@ export default function JobEnquiriesView({
 
   const linkedConsumables = getLinkedConsumables(selectedJob);
   const linkedWorksheets = getLinkedWorksheets(selectedJob);
+
+  // Helper to compute Job Card Steps and Daily Worksheet completion progress
+  const getJobCardProgress = (job: Job | null, worksheets: WorksheetEntry[]) => {
+    if (!job) {
+      return {
+        steps: [],
+        completedCount: 0,
+        totalCount: 0,
+        percentage: 0,
+        isComplete: false,
+        totalWorksheetHours: 0,
+        totalLines: 0
+      };
+    }
+
+    const totalWorksheetHours = worksheets.reduce((sum, w) => sum + (w.durationHours || 0), 0);
+    const totalLines = worksheets.length;
+
+    const prefix = `${job.id} - `;
+    const rawSteps = job.preQuoteDetails?.steps || [];
+
+    const steps = rawSteps.map((s, idx) => {
+      let clean = (s.stepName || '').trim();
+      if (clean.startsWith(prefix)) {
+        clean = clean.substring(prefix.length).trim();
+      }
+      return {
+        stepIndex: idx + 1,
+        rawName: s.stepName || '',
+        cleanName: clean,
+        quantity: s.quantity || 1,
+        price: s.price || 0
+      };
+    }).filter(s => s.cleanName.length > 0);
+
+    const totalCount = steps.length;
+
+    // Evaluate completion for each step against captured worksheet operations
+    const stepsWithStatus = steps.map(step => {
+      const cleanLower = step.cleanName.toLowerCase();
+      const rawLower = step.rawName.toLowerCase();
+
+      const matchingWorksheets = worksheets.filter(w => {
+        if (!w.operation) return false;
+        const opLower = w.operation.trim().toLowerCase();
+        return (
+          opLower === cleanLower ||
+          opLower === rawLower ||
+          opLower.includes(cleanLower) ||
+          cleanLower.includes(opLower)
+        );
+      });
+
+      const isCompleted = job.status === 'Closed' || matchingWorksheets.length > 0;
+
+      return {
+        ...step,
+        isCompleted,
+        matchingWorksheets,
+        matchingCount: matchingWorksheets.length,
+        loggedHours: matchingWorksheets.reduce((sum, w) => sum + (w.durationHours || 0), 0),
+        lastCapturedDate: matchingWorksheets.length > 0 ? matchingWorksheets[matchingWorksheets.length - 1].jobDate : undefined,
+        lastPageNumber: matchingWorksheets.length > 0 ? matchingWorksheets[matchingWorksheets.length - 1].pageNumber : undefined
+      };
+    });
+
+    const completedCount = stepsWithStatus.filter(s => s.isCompleted).length;
+
+    let percentage = 0;
+    if (job.status === 'Closed') {
+      percentage = 100;
+    } else if (totalCount > 0) {
+      percentage = Math.min(100, Math.round((completedCount / totalCount) * 100));
+    } else if (worksheets.length > 0) {
+      percentage = Math.min(100, worksheets.length >= 1 ? 50 : 0);
+    }
+
+    return {
+      steps: stepsWithStatus,
+      completedCount: job.status === 'Closed' && totalCount > 0 ? totalCount : completedCount,
+      totalCount,
+      percentage,
+      isComplete: job.status === 'Closed' || (totalCount > 0 && completedCount >= totalCount),
+      totalWorksheetHours,
+      totalLines
+    };
+  };
+
+  const progressData = getJobCardProgress(selectedJob, linkedWorksheets);
 
   // Photo Category Type for 5 slider categories
   type PhotoCategory = 'paperwork' | 'component' | 'inspection' | 'final_inspection' | 'delivery';
@@ -641,70 +730,95 @@ export default function JobEnquiriesView({
 
   return (
     <div className="space-y-6 text-left" id="job-enquiries-view-root">
-      {/* Header */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-3 text-center">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 font-display flex items-center justify-center gap-2">
-          <Search className="w-6 h-6 text-indigo-600" />
-          Job Enquiries
-        </h1>
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <div className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl font-bold text-amber-800">
-            <Clock className="w-3.5 h-3.5 text-amber-600" />
-            <span>Waiting Go-Ahead: {waitingGoAheadCount}</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold text-emerald-800">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Go-Ahead: {goAheadCount}</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl font-bold text-slate-700">
-            <Archive className="w-3.5 h-3.5 text-slate-500" />
-            <span>Closed: {closedJobsCount}</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-xl font-bold text-indigo-800">
-            <Search className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Total Assigned: {totalJobCardsCount}</span>
-          </div>
+      {/* Header & Status Slider Switcher */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-4 text-center">
+        <div className="flex flex-col items-center gap-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-800 font-display flex items-center justify-center gap-2">
+            <Search className="w-6 h-6 text-indigo-600" />
+            Job Enquiries
+          </h1>
+          <p className="text-xs text-slate-500 max-w-lg">
+            Track active job cards, monitor customer go-ahead approvals, and review workshop timesheets.
+          </p>
+        </div>
+
+        {/* Status Filter Slider */}
+        <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 flex flex-wrap items-center justify-center gap-1.5 shadow-2xs">
+          {[
+            {
+              id: 'WaitingGoAhead',
+              label: 'Waiting Go-Ahead',
+              count: waitingGoAheadCount,
+              icon: Clock,
+              activeColor: 'bg-amber-600 text-white shadow-xs',
+              badgeActive: 'bg-amber-800 text-white',
+              badgeInactive: 'bg-amber-100 text-amber-800'
+            },
+            {
+              id: 'GoAhead',
+              label: 'Go-Ahead',
+              count: goAheadCount,
+              icon: CheckCircle2,
+              activeColor: 'bg-emerald-600 text-white shadow-xs',
+              badgeActive: 'bg-emerald-800 text-white',
+              badgeInactive: 'bg-emerald-100 text-emerald-800'
+            },
+            {
+              id: 'Closed',
+              label: 'Closed Jobs',
+              count: closedJobsCount,
+              icon: Archive,
+              activeColor: 'bg-slate-700 text-white shadow-xs',
+              badgeActive: 'bg-slate-900 text-white',
+              badgeInactive: 'bg-slate-200 text-slate-700'
+            },
+            {
+              id: 'ALL',
+              label: 'All Assigned',
+              count: totalJobCardsCount,
+              icon: Search,
+              activeColor: 'bg-indigo-600 text-white shadow-xs',
+              badgeActive: 'bg-indigo-800 text-white',
+              badgeInactive: 'bg-indigo-100 text-indigo-800'
+            }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = statusFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusFilter(tab.id)}
+                className={`flex items-center gap-2 px-3.5 py-2 sm:px-4 sm:py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  isActive
+                    ? tab.activeColor
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+                <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-black ${
+                  isActive ? tab.badgeActive : tab.badgeInactive
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Toolbar Filters */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          {/* Search */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search by Job Card # (J00001), Order #, Component ID (C00001), Customer, Serial #, Delivery Note, Technician..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2.5 w-full text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-indigo-500 focus:bg-white transition-all font-medium"
-            />
-          </div>
-
-          {/* Status filter bar & Delete All */}
-          <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
-            <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 border border-slate-200/60 p-1 rounded-xl shadow-xs">
-              {[
-                { id: 'WaitingGoAhead', label: `Waiting Go-Ahead (${waitingGoAheadCount})` },
-                { id: 'GoAhead', label: `Go-Ahead (${goAheadCount})` },
-                { id: 'Closed', label: `Closed Jobs (${closedJobsCount})` },
-                { id: 'ALL', label: `All Assigned (${totalJobCardsCount})` }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setStatusFilter(tab.id)}
-                  className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
-                    statusFilter === tab.id
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* Toolbar Search Filter */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="relative w-full">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            placeholder="Search by Job Card # (J00001), Order #, Component ID (C00001), Customer, Serial #, Delivery Note, Technician..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 pr-4 py-2.5 w-full text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-indigo-500 focus:bg-white transition-all font-medium"
+          />
         </div>
       </div>
 
@@ -838,7 +952,7 @@ export default function JobEnquiriesView({
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-[95vw] max-w-6xl h-[88vh] max-h-[880px] min-h-[500px] flex flex-col overflow-hidden animate-fade-in text-left">
             
             {/* Modal Header */}
-            <div className="p-6 border-b border-slate-200 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
+            <div className="p-6 border-b border-slate-800 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="bg-indigo-600 p-2.5 rounded-2xl text-white shadow-md">
                   <Search className="w-6 h-6" />
@@ -870,6 +984,97 @@ export default function JobEnquiriesView({
               </button>
             </div>
 
+            {/* PROGRESS BAR TRACKER (Tracked via daily worksheet captures against Job Card steps) */}
+            <div className="bg-slate-900 border-b border-slate-800 px-6 py-3.5 text-white flex-shrink-0">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                      Worksheet Job Progress
+                    </span>
+                    <span className={`text-xs font-black px-2.5 py-0.5 rounded-full border font-mono ${
+                      progressData.percentage === 100
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : progressData.percentage > 0
+                        ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      {progressData.percentage}% Complete
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-300 font-medium hidden md:inline">
+                    {progressData.totalCount > 0
+                      ? `${progressData.completedCount} of ${progressData.totalCount} Job Card steps completed`
+                      : `${linkedWorksheets.length} worksheet entries logged`}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3 text-xs text-slate-400 font-mono">
+                  <div className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-blue-400" />
+                    <span className="text-slate-200 font-bold">{progressData.totalWorksheetHours.toFixed(2)} hrs</span>
+                    <span className="text-slate-400">logged</span>
+                  </div>
+                  <span>•</span>
+                  <div className="flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-slate-200 font-bold">{linkedWorksheets.length}</span>
+                    <span className="text-slate-400">{linkedWorksheets.length === 1 ? 'page line' : 'page lines'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar Track */}
+              <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden border border-slate-700/80 p-0.5 shadow-inner">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    progressData.percentage === 100
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/50'
+                      : 'bg-gradient-to-r from-indigo-500 via-blue-500 to-emerald-400 shadow-sm shadow-indigo-500/50'
+                  }`}
+                  style={{ width: `${Math.max(progressData.percentage > 0 ? 3 : 0, progressData.percentage)}%` }}
+                />
+              </div>
+
+              {/* Scannable step chips */}
+              {progressData.steps.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t border-slate-800/80">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 mr-1">Steps:</span>
+                  {progressData.steps.map((step) => (
+                    <div
+                      key={step.stepIndex}
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all ${
+                        step.isCompleted
+                          ? 'bg-emerald-950/60 border-emerald-600/60 text-emerald-300'
+                          : 'bg-slate-800/60 border-slate-700 text-slate-400'
+                      }`}
+                      title={
+                        step.isCompleted
+                          ? `Completed! Logged in worksheet (${step.matchingCount} line${step.matchingCount > 1 ? 's' : ''}, ${step.loggedHours.toFixed(2)} hrs)`
+                          : 'Awaiting completion in daily worksheet captures'
+                      }
+                    >
+                      {step.isCompleted ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                      ) : (
+                        <span className="w-3 h-3 rounded-full border border-slate-500 flex-shrink-0 flex items-center justify-center text-[9px] text-slate-400 font-mono">
+                          {step.stepIndex}
+                        </span>
+                      )}
+                      <span className="truncate max-w-[180px]">
+                        {step.cleanName}
+                      </span>
+                      {step.isCompleted && step.lastPageNumber && (
+                        <span className="text-[10px] font-mono text-emerald-400/80 bg-emerald-900/50 px-1 rounded">
+                          p.{step.lastPageNumber}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Sub-tab Navigation Bar */}
             <div className="bg-slate-100 border-b border-slate-200 px-6 py-2 flex items-center justify-between gap-2 flex-shrink-0 overflow-x-auto">
               <div className="flex items-center gap-2">
@@ -883,6 +1088,23 @@ export default function JobEnquiriesView({
                 >
                   <Eye className="w-3.5 h-3.5" />
                   Job Details
+                </button>
+
+                <button
+                  onClick={() => setModalTab('worksheet')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    modalTab === 'worksheet'
+                      ? 'bg-white text-blue-700 shadow-xs border border-slate-200'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Worksheet</span>
+                  {linkedWorksheets.length > 0 && (
+                    <span className="bg-blue-100 text-blue-800 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full font-mono">
+                      {linkedWorksheets.length}
+                    </span>
+                  )}
                 </button>
 
                 <button
@@ -1251,129 +1473,6 @@ export default function JobEnquiriesView({
                     </div>
                   )}
 
-                  {/* WORKSHEET LOG SECTION IN OVERVIEW (QUICK VIEW OF EVERY LINE FROM WORKSHEET) */}
-                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4" id="job-worksheet-log-section">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="bg-blue-50 p-2 rounded-xl text-blue-600 border border-blue-200/60">
-                          <Clock className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Workshop Timesheet Activity</h4>
-                          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                            <span>Worksheet Log</span>
-                            {(selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id) && (
-                              <span className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 font-mono px-2 py-0.5 rounded-md font-bold">
-                                Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}
-                              </span>
-                            )}
-                          </h3>
-                        </div>
-                      </div>
-
-                      {linkedWorksheets.length > 0 && (
-                        <div className="flex items-center gap-2 text-xs font-bold">
-                          <span className="bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1 rounded-xl">
-                            {linkedWorksheets.length} {linkedWorksheets.length === 1 ? 'Line' : 'Lines'} Captured
-                          </span>
-                          <span className="bg-purple-50 text-purple-800 border border-purple-200 px-3 py-1 rounded-xl font-mono">
-                            {linkedWorksheets.reduce((sum, item) => sum + (item.durationHours || 0), 0).toFixed(2)} Workshop Hours
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {loadingWorksheets ? (
-                      <div className="text-center py-6 text-slate-400 text-xs font-medium">
-                        Loading worksheet log lines...
-                      </div>
-                    ) : linkedWorksheets.length === 0 ? (
-                      <div className="text-center py-8 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 p-4">
-                        <Clock className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                        <p className="text-xs font-bold text-slate-600">No worksheet lines logged for this job card yet</p>
-                        <p className="text-[11px] text-slate-400 mt-1 max-w-md mx-auto">
-                          When operators capture daily worksheet page lines in the Worksheet Dashboard referencing Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}, they will automatically appear here.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                        <table className="w-full text-left text-xs text-slate-600 border-collapse">
-                          <thead>
-                            <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
-                              <th className="p-3">Job Date</th>
-                              <th className="p-3">Page #</th>
-                              <th className="p-3">Machine / Book</th>
-                              <th className="p-3">Clock #</th>
-                              <th className="p-3">Operation</th>
-                              <th className="p-3">Time Range</th>
-                              <th className="p-3 text-center">Duration</th>
-                              <th className="p-3">Captured By / Notes</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-medium">
-                            {linkedWorksheets.map((entry) => (
-                              <tr key={entry.id} className="hover:bg-blue-50/20 transition-colors">
-                                <td className="p-3 whitespace-nowrap font-mono font-bold text-slate-800 text-[11px]">
-                                  {entry.jobDate}
-                                </td>
-                                <td className="p-3 whitespace-nowrap">
-                                  <span className="font-mono font-bold text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-900">
-                                    p. {entry.pageNumber}
-                                  </span>
-                                </td>
-                                <td className="p-3">
-                                  <div className="font-bold text-slate-800">
-                                    {entry.machineName || 'Machine Equipment'}
-                                  </div>
-                                  <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
-                                    {entry.bookNumber && (
-                                      <span className="text-amber-700 bg-amber-50 px-1 rounded border border-amber-200">
-                                        {entry.bookNumber.startsWith('Book') ? entry.bookNumber : `Book #${entry.bookNumber}`}
-                                      </span>
-                                    )}
-                                    {entry.machineSerialNumber && (
-                                      <span>SN: {entry.machineSerialNumber}</span>
-                                    )}
-                                  </div>
-                                </td>
-                                <td className="p-3 whitespace-nowrap font-mono font-bold text-slate-800">
-                                  <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
-                                    {entry.clockNumber}
-                                  </span>
-                                </td>
-                                <td className="p-3">
-                                  <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
-                                    {entry.operation}
-                                  </span>
-                                </td>
-                                <td className="p-3 whitespace-nowrap font-mono text-slate-700 text-[11px]">
-                                  {entry.startTime} – {entry.endTime}
-                                </td>
-                                <td className="p-3 text-center whitespace-nowrap">
-                                  <span className="font-mono font-bold text-[11px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                                    {entry.durationHours ? `${entry.durationHours.toFixed(2)} hrs` : `${Math.floor((entry.durationMinutes || 0)/60)}h ${(entry.durationMinutes || 0)%60}m`}
-                                  </span>
-                                </td>
-                                <td className="p-3 max-w-xs">
-                                  {entry.notes ? (
-                                    <div className="text-slate-700 truncate text-[11px]" title={entry.notes}>
-                                      {entry.notes}
-                                    </div>
-                                  ) : (
-                                    <span className="text-slate-400 text-[10px] italic">No notes</span>
-                                  )}
-                                  <div className="text-[10px] text-slate-400 mt-0.5">
-                                    Captured by {entry.capturedBy || 'Operator'}
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-
                   {/* LINKED CONSUMABLE LOGS SECTION IN OVERVIEW */}
                   <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -1461,6 +1560,251 @@ export default function JobEnquiriesView({
                                 </td>
                               </tr>
                             ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* SUB-TAB 2: DEDICATED WORKSHEET SECTION (BETWEEN JOB DETAILS AND JOB PICTURES) */}
+              {modalTab === 'worksheet' && (
+                <div className="space-y-6">
+                  {/* Step Completion Overview Card */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="bg-blue-50 p-2 rounded-xl text-blue-600 border border-blue-200/60">
+                          <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Job Card Procedures</h4>
+                          <h3 className="text-sm font-bold text-slate-800">
+                            Daily Worksheet Step-by-Step Completion
+                          </h3>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold bg-slate-100 text-slate-700 px-3 py-1 rounded-xl border border-slate-200">
+                          {progressData.completedCount} of {progressData.totalCount} Completed
+                        </span>
+                        <span className={`text-xs font-black px-3 py-1 rounded-xl border font-mono ${
+                          progressData.percentage === 100
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          {progressData.percentage}% Done
+                        </span>
+                      </div>
+                    </div>
+
+                    {progressData.steps.length === 0 ? (
+                      <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200 text-slate-500 text-xs">
+                        No specific procedure steps defined on this job card's pre-quote. All daily worksheet lines referencing this job are logged below.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {progressData.steps.map((step) => (
+                          <div
+                            key={step.stepIndex}
+                            className={`p-4 rounded-xl border transition-all flex flex-col justify-between ${
+                              step.isCompleted
+                                ? 'bg-emerald-50/40 border-emerald-200 text-slate-800'
+                                : 'bg-slate-50 border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-2.5">
+                                <div className={`p-1 rounded-lg mt-0.5 ${
+                                  step.isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'
+                                }`}>
+                                  {step.isCompleted ? (
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  ) : (
+                                    <Clock className="w-4 h-4" />
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-400 font-mono">Step {step.stepIndex}</span>
+                                    {step.quantity > 1 && (
+                                      <span className="text-[10px] font-bold bg-slate-200 px-1.5 py-0.2 rounded text-slate-700">
+                                        Qty {step.quantity}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h4 className="text-sm font-bold text-slate-900 mt-0.5">{step.cleanName}</h4>
+                                </div>
+                              </div>
+
+                              <span className={`text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full border ${
+                                step.isCompleted
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : 'bg-slate-200 text-slate-600 border-slate-300'
+                              }`}>
+                                {step.isCompleted ? 'Completed' : 'Pending'}
+                              </span>
+                            </div>
+
+                            {step.matchingWorksheets.length > 0 && (
+                              <div className="mt-3 pt-2.5 border-t border-emerald-200/60 flex items-center justify-between text-[11px] text-emerald-800">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-bold bg-emerald-100 px-2 py-0.5 rounded">
+                                    {step.matchingCount} {step.matchingCount === 1 ? 'log' : 'logs'}
+                                  </span>
+                                  <span>Last: p. {step.lastPageNumber} ({step.lastCapturedDate})</span>
+                                </div>
+                                <span className="font-mono font-bold">{step.loggedHours.toFixed(2)} hrs</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Comprehensive Worksheet Log Table */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="bg-blue-50 p-2 rounded-xl text-blue-600 border border-blue-200/60">
+                          <Clock className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Timesheet Logs</h4>
+                          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            <span>Captured Worksheet Lines</span>
+                            {(selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id) && (
+                              <span className="text-[10px] bg-blue-50 text-blue-800 border border-blue-200 font-mono px-2 py-0.5 rounded-md font-bold">
+                                Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}
+                              </span>
+                            )}
+                          </h3>
+                        </div>
+                      </div>
+
+                      {linkedWorksheets.length > 0 && (
+                        <div className="flex items-center gap-2 text-xs font-bold">
+                          <span className="bg-blue-50 text-blue-800 border border-blue-200 px-3 py-1 rounded-xl">
+                            {linkedWorksheets.length} {linkedWorksheets.length === 1 ? 'Line' : 'Lines'} Captured
+                          </span>
+                          <span className="bg-purple-50 text-purple-800 border border-purple-200 px-3 py-1 rounded-xl font-mono">
+                            {linkedWorksheets.reduce((sum, item) => sum + (item.durationHours || 0), 0).toFixed(2)} Workshop Hours
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {loadingWorksheets ? (
+                      <div className="text-center py-6 text-slate-400 text-xs font-medium">
+                        Loading worksheet log lines...
+                      </div>
+                    ) : linkedWorksheets.length === 0 ? (
+                      <div className="text-center py-10 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 p-6">
+                        <Clock className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                        <p className="text-sm font-bold text-slate-700">No worksheet lines logged for this job card yet</p>
+                        <p className="text-xs text-slate-400 mt-1.5 max-w-md mx-auto">
+                          When operators capture daily worksheet page lines in the Worksheet Dashboard referencing Job #{selectedJob.jobCardDetails?.jobCardNumber || selectedJob.id}, each line and its progress update will stream directly into this section.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                        <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                              <th className="p-3">Job Date</th>
+                              <th className="p-3">Page #</th>
+                              <th className="p-3">Machine / Book</th>
+                              <th className="p-3">Clock #</th>
+                              <th className="p-3">Operation / Procedure</th>
+                              <th className="p-3">Time Range</th>
+                              <th className="p-3 text-center">Duration</th>
+                              <th className="p-3">Captured By / Notes</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {linkedWorksheets.map((entry) => {
+                              // Check if this operation matched any job card step
+                              const matchedStep = progressData.steps.find(s => {
+                                const cleanLower = s.cleanName.toLowerCase();
+                                const rawLower = s.rawName.toLowerCase();
+                                const opLower = (entry.operation || '').trim().toLowerCase();
+                                return (
+                                  opLower === cleanLower ||
+                                  opLower === rawLower ||
+                                  opLower.includes(cleanLower) ||
+                                  cleanLower.includes(opLower)
+                                );
+                              });
+
+                              return (
+                                <tr key={entry.id} className="hover:bg-blue-50/20 transition-colors">
+                                  <td className="p-3 whitespace-nowrap font-mono font-bold text-slate-800 text-[11px]">
+                                    {entry.jobDate}
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap">
+                                    <span className="font-mono font-bold text-xs bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-slate-900">
+                                      p. {entry.pageNumber}
+                                    </span>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-bold text-slate-800">
+                                      {entry.machineName || 'Machine Equipment'}
+                                    </div>
+                                    <div className="text-[10px] font-mono text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                      {entry.bookNumber && (
+                                        <span className="text-amber-700 bg-amber-50 px-1 rounded border border-amber-200">
+                                          {entry.bookNumber.startsWith('Book') ? entry.bookNumber : `Book #${entry.bookNumber}`}
+                                        </span>
+                                      )}
+                                      {entry.machineSerialNumber && (
+                                        <span>SN: {entry.machineSerialNumber}</span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap font-mono font-bold text-slate-800">
+                                    <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200 text-[11px]">
+                                      {entry.clockNumber}
+                                    </span>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="flex flex-col gap-1 items-start">
+                                      <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                        {entry.operation}
+                                      </span>
+                                      {matchedStep && (
+                                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1">
+                                          <CheckCircle2 className="w-2.5 h-2.5" />
+                                          <span>Step {matchedStep.stepIndex}</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="p-3 whitespace-nowrap font-mono text-slate-700 text-[11px]">
+                                    {entry.startTime} – {entry.endTime}
+                                  </td>
+                                  <td className="p-3 text-center whitespace-nowrap">
+                                    <span className="font-mono font-bold text-[11px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                      {entry.durationHours ? `${entry.durationHours.toFixed(2)} hrs` : `${Math.floor((entry.durationMinutes || 0)/60)}h ${(entry.durationMinutes || 0)%60}m`}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 max-w-xs">
+                                    {entry.notes ? (
+                                      <div className="text-slate-700 truncate text-[11px]" title={entry.notes}>
+                                        {entry.notes}
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-400 text-[10px] italic">No notes</span>
+                                    )}
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                      Captured by {entry.capturedBy || 'Operator'}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>

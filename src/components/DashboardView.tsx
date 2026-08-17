@@ -699,7 +699,7 @@ export default function DashboardView({
       )}
 
       {/* ==================== TABLE CONTAINER (WITH PAGINATION) ==================== */}
-      {activeDashboardMode !== 'stores' && (
+      {activeDashboardMode !== 'stores' && activeDashboardMode !== 'worksheet' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Table Filters Header */}
           <div className="p-5 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/50">

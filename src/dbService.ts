@@ -62,6 +62,28 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   return errInfo;
 }
 
+/**
+ * Recursively cleans an object for Firestore by removing all `undefined` values,
+ * preventing Firestore "Unsupported field value: undefined" runtime errors.
+ */
+export function cleanForFirestore<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => (typeof item === 'object' && item !== null ? cleanForFirestore(item) : item)) as unknown as T;
+  }
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      result[key] = typeof value === 'object' && value !== null ? cleanForFirestore(value) : value;
+    }
+  }
+  return result as T;
+}
+
 // ==========================================
 // 1. CONFIG / CUSTOM COLUMNS SERVICE
 // ==========================================
@@ -88,7 +110,7 @@ export async function getCustomColumns(): Promise<CustomColumn[]> {
 }
 
 export async function saveCustomColumns(columns: CustomColumn[]): Promise<void> {
-  await setDoc(doc(db, 'config', CONFIG_DOC_ID), { customColumns: columns });
+  await setDoc(doc(db, 'config', CONFIG_DOC_ID), cleanForFirestore({ customColumns: columns }));
 }
 
 const FORMAT_STORAGE_KEY = 'job_card_format_config_v1';
@@ -129,12 +151,12 @@ export async function getJobCardFormatConfig(): Promise<JobCardFormatConfig> {
         },
         sections: parsed.sections && parsed.sections.length > 0 ? parsed.sections : DEFAULT_JOB_CARD_FORMAT.sections
       };
-      await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), merged);
+      await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), cleanForFirestore(merged));
       return merged;
     }
 
     // Seed default format if empty
-    await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), DEFAULT_JOB_CARD_FORMAT);
+    await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), cleanForFirestore(DEFAULT_JOB_CARD_FORMAT));
     return DEFAULT_JOB_CARD_FORMAT;
   } catch (error) {
     console.error("Error fetching Job Card format config:", error);
@@ -175,10 +197,10 @@ export async function saveJobCardFormatConfig(config: JobCardFormatConfig): Prom
     console.error("Error writing format config to localStorage:", e);
   }
   try {
-    await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), {
+    await setDoc(doc(db, 'config', JOB_CARD_FORMAT_DOC_ID), cleanForFirestore({
       ...configToSave,
       updatedAt: new Date().toISOString()
-    });
+    }));
   } catch (error) {
     console.error("Error saving Job Card format config to Firestore:", error);
     handleFirestoreError(error, OperationType.WRITE, `config/${JOB_CARD_FORMAT_DOC_ID}`);
@@ -204,10 +226,10 @@ export async function getCustomers(): Promise<Customer[]> {
 }
 
 export async function saveCustomer(customer: Customer): Promise<void> {
-  await setDoc(doc(db, 'customers', customer.id), {
+  await setDoc(doc(db, 'customers', customer.id), cleanForFirestore({
     ...customer,
     updatedAt: new Date().toISOString()
-  });
+  }));
 }
 
 export async function deleteCustomer(id: string): Promise<void> {
@@ -232,10 +254,10 @@ export async function getMachines(): Promise<Machine[]> {
 }
 
 export async function saveMachine(machine: Machine): Promise<void> {
-  await setDoc(doc(db, 'machines', machine.id), {
+  await setDoc(doc(db, 'machines', machine.id), cleanForFirestore({
     ...machine,
     updatedAt: new Date().toISOString()
-  });
+  }));
 }
 
 export async function deleteMachine(id: string): Promise<void> {
@@ -273,10 +295,10 @@ export async function getComponentMatrices(): Promise<ComponentMatrix[]> {
 }
 
 export async function saveComponentMatrix(matrix: ComponentMatrix): Promise<void> {
-  await setDoc(doc(db, 'components', matrix.id), {
+  await setDoc(doc(db, 'components', matrix.id), cleanForFirestore({
     ...matrix,
     updatedAt: new Date().toISOString()
-  });
+  }));
 }
 
 export async function deleteComponentMatrix(id: string): Promise<void> {
@@ -314,11 +336,11 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
-  await setDoc(doc(db, 'users', profile.uid), profile);
+  await setDoc(doc(db, 'users', profile.uid), cleanForFirestore(profile));
 }
 
 export async function updateUserPermissions(uid: string, permissions: UserPermissions): Promise<void> {
-  await updateDoc(doc(db, 'users', uid), { permissions });
+  await updateDoc(doc(db, 'users', uid), cleanForFirestore({ permissions }));
 }
 
 // ==========================================
@@ -340,10 +362,10 @@ export async function getJobs(): Promise<Job[]> {
 
 export async function saveJob(job: Job): Promise<void> {
   const sanitizedJob = await sanitizeJobForFirestoreAsync(job);
-  await setDoc(doc(db, 'jobs', sanitizedJob.id), {
+  await setDoc(doc(db, 'jobs', sanitizedJob.id), cleanForFirestore({
     ...sanitizedJob,
     updatedAt: new Date().toISOString()
-  });
+  }));
 }
 
 export async function deleteJob(id: string): Promise<void> {
@@ -556,10 +578,10 @@ export async function getToolStockItems(): Promise<ToolStockItem[]> {
 
 export async function saveToolStockItem(tool: ToolStockItem): Promise<void> {
   try {
-    await setDoc(doc(db, 'tool_stock', tool.id), {
+    await setDoc(doc(db, 'tool_stock', tool.id), cleanForFirestore({
       ...tool,
       updatedAt: new Date().toISOString()
-    });
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `tool_stock/${tool.id}`);
   }
@@ -589,10 +611,10 @@ export async function getConsumableItems(): Promise<ConsumableItem[]> {
 
 export async function saveConsumableItem(item: ConsumableItem): Promise<void> {
   try {
-    await setDoc(doc(db, 'consumables', item.id), {
+    await setDoc(doc(db, 'consumables', item.id), cleanForFirestore({
       ...item,
       updatedAt: new Date().toISOString()
-    });
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `consumables/${item.id}`);
   }
@@ -622,9 +644,9 @@ export async function getConsumableAllocationLogs(): Promise<ConsumableAllocatio
 }
 
 export async function saveConsumableAllocationLog(log: ConsumableAllocationLog): Promise<void> {
-  await setDoc(doc(db, 'consumable_allocations', log.id), {
+  await setDoc(doc(db, 'consumable_allocations', log.id), cleanForFirestore({
     ...log
-  });
+  }));
 }
 
 export async function deleteConsumableAllocationLog(id: string): Promise<void> {
@@ -650,9 +672,9 @@ export async function getToolLogs(): Promise<ToolLog[]> {
 }
 
 export async function saveToolLog(log: ToolLog): Promise<void> {
-  await setDoc(doc(db, 'tool_logs', log.id), {
+  await setDoc(doc(db, 'tool_logs', log.id), cleanForFirestore({
     ...log
-  });
+  }));
 }
 
 export async function deleteToolLog(id: string): Promise<void> {
@@ -1057,12 +1079,13 @@ export async function getWorksheetEntries(): Promise<WorksheetEntry[]> {
 export async function saveWorksheetEntry(entry: WorksheetEntry): Promise<void> {
   const path = `worksheet_entries/${entry.id}`;
   try {
-    await setDoc(doc(db, 'worksheet_entries', entry.id), {
+    await setDoc(doc(db, 'worksheet_entries', entry.id), cleanForFirestore({
       ...entry,
       updatedAt: new Date().toISOString()
-    });
+    }));
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
   }
 }
 
