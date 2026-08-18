@@ -56,6 +56,7 @@ import AllJobsView from './components/AllJobsView';
 import AdminCenterView from './components/AdminCenterView';
 import StoresDashboardView from './components/StoresDashboardView';
 import WorksheetDashboardView from './components/WorksheetDashboardView';
+import WorksheetReportsView from './components/WorksheetReportsView';
 
 import { 
   Wrench, 
@@ -75,7 +76,8 @@ import {
   Menu,
   X,
   Boxes,
-  BookOpen
+  BookOpen,
+  BarChart3
 } from 'lucide-react';
 
 export default function App() {
@@ -359,7 +361,8 @@ export default function App() {
 
     switch(tabName) {
       case 'dashboard': return true;
-      case 'worksheet': return Boolean(p.canWorksheet !== false);
+      case 'worksheet': return Boolean(p.canWorksheet);
+      case 'reporting': return Boolean(p.canReporting);
       case 'stores': return Boolean(p.canStores);
       case 'receiving': return Boolean(p.canReceive || p.canCreateJobCard);
       case 'inspection': return Boolean(p.canInspect || p.canCreateJobCard);
@@ -375,7 +378,7 @@ export default function App() {
   // Automatically redirect user if current activeTab is not permitted
   useEffect(() => {
     if (userProfile && !hasAccess(activeTab)) {
-      const allowed = ['dashboard', 'worksheet', 'receiving', 'inspection', 'quoting', 'jobcard', 'enquiries', 'stores', 'admin'].find(tab => hasAccess(tab));
+      const allowed = ['dashboard', 'worksheet', 'reporting', 'receiving', 'inspection', 'quoting', 'jobcard', 'enquiries', 'stores', 'admin'].find(tab => hasAccess(tab));
       if (allowed) {
         setActiveTab(allowed);
       }
@@ -408,6 +411,7 @@ export default function App() {
     { id: 'enquiries', label: '5. Job Enquiries', icon: Search, stage: 'Stage 5' },
     { id: 'stores', label: 'Stores Inventory', icon: Boxes },
     { id: 'worksheet', label: 'Worksheet Logs', icon: BookOpen },
+    { id: 'reporting', label: 'Reporting', icon: BarChart3 },
     { id: 'admin', label: 'Admin Center', icon: Lock, isAdminOnly: true },
   ];
 
@@ -596,8 +600,24 @@ export default function App() {
               <WorksheetDashboardView
                 jobs={jobs}
                 machines={machines}
+                customers={customers}
+                componentsList={componentsList}
                 currentUser={userProfile}
                 onSaveMachine={handleSaveMachine}
+                onSelectJob={(job) => {
+                  setSelectedJobContext(job);
+                  setActiveTab('enquiries');
+                }}
+              />
+            )}
+
+            {activeTab === 'reporting' && (
+              <WorksheetReportsView
+                jobs={jobs}
+                machines={machines}
+                customers={customers}
+                componentsList={componentsList}
+                currentUser={userProfile}
                 onSelectJob={(job) => {
                   setSelectedJobContext(job);
                   setActiveTab('enquiries');

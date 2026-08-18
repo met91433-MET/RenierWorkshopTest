@@ -16,6 +16,9 @@
             "canInspect": { "type": "boolean" },
             "canQuote": { "type": "boolean" },
             "canCreateJobCard": { "type": "boolean" },
+            "canStores": { "type": "boolean" },
+            "canWorksheet": { "type": "boolean" },
+            "canReporting": { "type": "boolean" },
             "canClose": { "type": "boolean" },
             "isAdmin": { "type": "boolean" }
           }

@@ -57,6 +57,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           canQuote: false,
           canCreateJobCard: false,
           canStores: false,
+          canWorksheet: false,
+          canReporting: false,
           canClose: false,
           isAdmin: false
         };
@@ -88,6 +90,8 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
             canQuote: true,
             canCreateJobCard: true,
             canStores: true,
+            canWorksheet: true,
+            canReporting: true,
             canClose: true,
             isAdmin: true
           };

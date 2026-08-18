@@ -1054,20 +1054,25 @@ export default function AdminCenterView({
           TAB 1: USER PERMISSIONS
           ======================================================== */}
       {activeSubTab === 'users' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-left">
-          <div className="p-5 border-b border-slate-200 bg-slate-50/40 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden text-left">
+          <div className="p-4 border-b border-slate-200 bg-slate-50/40 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm font-bold text-slate-700">Workshop Users & Feature Clearances</h2>
-              <p className="text-[11px] text-slate-400 mt-0.5">Toggle booleans to restrict actions. E.g. Unchecking 'Pre-Quoting' bars users from editing price lines.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-slate-800">Workshop Users & Feature Clearances</h2>
+                <span className="bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  {users.length} Users
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">Toggle permission flags to grant or restrict access to specific workshop modules and administrative functions.</p>
             </div>
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-blue-500 shadow-2xs shrink-0">
+            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-2.5 py-1 focus-within:border-blue-500 shadow-2xs shrink-0">
               <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <input
                 type="text"
-                placeholder="Search user or email..."
+                placeholder="Filter users..."
                 value={userSearchQuery}
                 onChange={(e) => setUserSearchQuery(e.target.value)}
-                className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-40 font-medium text-slate-700 placeholder:text-slate-400"
+                className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-32 sm:w-40 font-medium text-slate-700 placeholder:text-slate-400"
               />
               {userSearchQuery && (
                 <button
@@ -1084,17 +1089,18 @@ export default function AdminCenterView({
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead>
-                <tr className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[9px] border-b border-slate-200">
-                  <th className="p-4 pl-6">Operator Account</th>
-                  <th className="p-4 text-center">Receiving</th>
-                  <th className="p-4 text-center">Inspection</th>
-                  <th className="p-4 text-center">Pre-Quote</th>
-                  <th className="p-4 text-center">Job Admin</th>
-                  <th className="p-4 text-center">Stores</th>
-                  <th className="p-4 text-center">Worksheet</th>
-                  <th className="p-4 text-center">Job Enquiries</th>
-                  <th className="p-4 text-center">System Admin</th>
-                  <th className="p-4 text-right pr-6">Action</th>
+                <tr className="bg-slate-50/80 text-slate-500 font-bold uppercase tracking-wider text-[9px] border-b border-slate-200">
+                  <th className="py-2.5 pl-4 pr-2 font-bold">Operator Account</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stage 1: Job Receiving">Receiving</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stage 2: Technical Inspection">Inspection</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stage 3: Pre-Quotation">Pre-Quote</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stage 4: Job Card Administration">Job Admin</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stores & Tools Inventory">Stores</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Worksheet Timesheet Logs">Worksheets</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Workshop Analytics & Reports">Reporting</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Job Card Search & Enquiries">Enquiries</th>
+                  <th className="py-2.5 px-1.5 text-center font-bold" title="Full System Administrator Access">Admin</th>
+                  <th className="py-2.5 pr-4 pl-2 text-right font-bold">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1107,113 +1113,139 @@ export default function AdminCenterView({
                   const perms = isEditing ? tempPermissions! : user.permissions;
 
                   return (
-                    <tr key={user.uid} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-4 pl-6">
-                        <p className="font-semibold text-slate-800">{user.displayName || 'Unnamed Operator'}</p>
-                        <p className="text-slate-400 font-mono mt-0.5">{user.email}</p>
+                    <tr 
+                      key={user.uid} 
+                      className={`transition-colors ${isEditing ? 'bg-blue-50/40' : 'hover:bg-slate-50/60'}`}
+                    >
+                      {/* Operator Account Column */}
+                      <td className="py-2.5 pl-4 pr-2">
+                        <div className="flex items-center gap-2 max-w-[200px]">
+                          <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-black text-[10px] flex items-center justify-center shrink-0">
+                            {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-slate-800 text-xs truncate leading-tight">
+                              {user.displayName || 'Unnamed Operator'}
+                            </p>
+                            <p className="text-slate-400 font-mono text-[10px] truncate leading-tight">
+                              {user.email}
+                            </p>
+                          </div>
+                        </div>
                       </td>
 
                       {/* Recv */}
-                      <td className="p-4 text-center">
+                      <td className="py-2.5 px-1.5 text-center">
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
                           checked={perms.canReceive}
                           onChange={() => handlePermissionToggle('canReceive')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
                       </td>
 
                       {/* Inspect */}
-                      <td className="p-4 text-center">
+                      <td className="py-2.5 px-1.5 text-center">
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
                           checked={perms.canInspect}
                           onChange={() => handlePermissionToggle('canInspect')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
                       </td>
 
                       {/* Quote */}
-                      <td className="p-4 text-center">
+                      <td className="py-2.5 px-1.5 text-center">
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
                           checked={perms.canQuote}
                           onChange={() => handlePermissionToggle('canQuote')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
                       </td>
 
                       {/* Cards */}
-                      <td className="p-4 text-center">
+                      <td className="py-2.5 px-1.5 text-center">
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
                           checked={perms.canCreateJobCard}
                           onChange={() => handlePermissionToggle('canCreateJobCard')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
                       </td>
 
                       {/* Stores */}
-                      <td className="p-4 text-center">
+                      <td className="py-2.5 px-1.5 text-center">
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
                           checked={Boolean(perms.canStores)}
                           onChange={() => handlePermissionToggle('canStores')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
                       </td>
 
-                      {/* Worksheet */}
-                      <td className="p-4 text-center">
+                      {/* Worksheet Logs */}
+                      <td className="py-2.5 px-1.5 text-center">
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
-                          checked={perms.canWorksheet !== false}
+                          checked={Boolean(perms.canWorksheet)}
                           onChange={() => handlePermissionToggle('canWorksheet')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
                       </td>
 
-                      {/* Close */}
-                      <td className="p-4 text-center">
+                      {/* Reporting */}
+                      <td className="py-2.5 px-1.5 text-center">
+                        <input 
+                          type="checkbox" 
+                          disabled={!isEditing}
+                          checked={Boolean(perms.canReporting)}
+                          onChange={() => handlePermissionToggle('canReporting')}
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
+                        />
+                      </td>
+
+                      {/* Enquiries / Close */}
+                      <td className="py-2.5 px-1.5 text-center">
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
                           checked={perms.canClose}
                           onChange={() => handlePermissionToggle('canClose')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
                       </td>
 
                       {/* Admin */}
-                      <td className="p-4 text-center">
+                      <td className="py-2.5 px-1.5 text-center">
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
                           checked={perms.isAdmin}
                           onChange={() => handlePermissionToggle('isAdmin')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 border-slate-300 disabled:opacity-75"
+                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
                       </td>
 
                       {/* Action */}
-                      <td className="p-4 text-right pr-6">
+                      <td className="py-2.5 pr-4 pl-2 text-right">
                         {isEditing ? (
-                          <div className="flex gap-1.5 justify-end">
+                          <div className="flex gap-1 justify-end">
                             <button
                               onClick={() => savePermissions(user.uid)}
-                              className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold px-2.5 py-1 rounded-md"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 py-1 rounded-md text-[11px] shadow-2xs transition-colors cursor-pointer"
                             >
                               Save
                             </button>
                             <button
                               onClick={() => { setEditingUserUid(null); setTempPermissions(null); }}
-                              className="bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200 font-semibold px-2.5 py-1 rounded-md"
+                              className="bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-semibold px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer"
                             >
                               Cancel
                             </button>
@@ -1221,9 +1253,9 @@ export default function AdminCenterView({
                         ) : (
                           <button
                             onClick={() => startEditPermissions(user)}
-                            className="bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 font-semibold px-2.5 py-1 rounded-md transition-colors"
+                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 font-bold px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer whitespace-nowrap"
                           >
-                            Edit Clearance
+                            Edit
                           </button>
                         )}
                       </td>

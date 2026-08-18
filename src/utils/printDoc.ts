@@ -184,6 +184,111 @@ export function triggerNativePrint(elementId: string = 'printable-jobcard-doc') 
 }
 
 /**
+ * Print directly via a hidden iframe inside the page.
+ * This is the most reliable cross-browser print method when embedded inside sandboxed iframes.
+ */
+export function printViaHiddenIframe(elementId: string, documentTitle: string = 'Document'): boolean {
+  const el = document.getElementById(elementId);
+  if (!el) {
+    console.error(`Print element #${elementId} not found.`);
+    return false;
+  }
+
+  const clone = el.cloneNode(true) as HTMLElement;
+  clone.classList.remove('hidden');
+  clone.style.display = 'block';
+
+  // Gather head styles
+  const styleNodes = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'));
+  let stylesHtml = '';
+  styleNodes.forEach((node) => {
+    stylesHtml += node.outerHTML + '\n';
+  });
+
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('id', 'print-service-iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.right = '0';
+  iframe.style.bottom = '0';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = '0';
+  iframe.style.visibility = 'hidden';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (!doc) {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+    triggerNativePrint(elementId);
+    return false;
+  }
+
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>${documentTitle}</title>
+        ${stylesHtml}
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap');
+          body {
+            background-color: #ffffff !important;
+            margin: 0 !important;
+            padding: 16px !important;
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            color: #0f172a !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          @page {
+            size: auto;
+            margin: 10mm;
+          }
+          @media print {
+            body { padding: 0 !important; }
+            .no-print { display: none !important; }
+          }
+        </style>
+      </head>
+      <body>
+        ${clone.outerHTML}
+      </body>
+    </html>
+  `);
+  doc.close();
+
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    } catch (err) {
+      console.warn('Iframe print blocked, falling back to native print:', err);
+      triggerNativePrint(elementId);
+    } finally {
+      setTimeout(() => {
+        if (iframe.parentNode) {
+          iframe.parentNode.removeChild(iframe);
+        }
+      }, 2000);
+    }
+  }, 300);
+
+  return true;
+}
+
+/**
+ * Universal print handler: Attempts hidden iframe print first, falls back to new window, then native.
+ */
+export function printDocumentReliably(options: PrintOptions) {
+  const success = printViaHiddenIframe(options.elementId, options.documentTitle || 'MES Report Document');
+  if (!success) {
+    openInNewWindow(options);
+  }
+}
+
+/**
  * Saves document as PDF by opening in a new browser window.
  */
 export async function downloadPdf(options: PrintOptions): Promise<boolean> {

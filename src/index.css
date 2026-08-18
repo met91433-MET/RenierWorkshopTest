@@ -34,6 +34,8 @@ body {
   #printable-jobcard-doc *,
   #printable-prequote-doc,
   #printable-prequote-doc *,
+  #printable-report-doc,
+  #printable-report-doc *,
   .print-active,
   .print-active * {
     visibility: visible !important;
@@ -41,6 +43,7 @@ body {
   
   #printable-jobcard-doc,
   #printable-prequote-doc,
+  #printable-report-doc,
   .print-active {
     display: block !important;
     position: absolute !important;

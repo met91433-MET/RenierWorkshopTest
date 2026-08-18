@@ -6,7 +6,10 @@ import {
   WorksheetEntry, 
   MachineTimesheetBook,
   formatMachineDisplayName,
-  getMachineLabelByIdOrNumber
+  getMachineLabelByIdOrNumber,
+  hasJobGoAhead,
+  Customer,
+  ComponentMatrix
 } from '../types';
 import { 
   getWorksheetEntries, 
@@ -41,13 +44,18 @@ import {
   X,
   ArrowRight,
   ListFilter,
-  History
+  History,
+  SlidersHorizontal,
+  TrendingUp,
+  BarChart3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface WorksheetDashboardViewProps {
   jobs: Job[];
   machines: Machine[];
+  customers?: Customer[];
+  componentsList?: ComponentMatrix[];
   currentUser: UserProfile | null;
   onSaveMachine?: (machine: Machine) => Promise<void> | void;
   onSelectJob?: (job: Job) => void;
@@ -56,6 +64,8 @@ interface WorksheetDashboardViewProps {
 export default function WorksheetDashboardView({
   jobs = [],
   machines = [],
+  customers = [],
+  componentsList = [],
   currentUser,
   onSaveMachine,
   onSelectJob
@@ -212,20 +222,22 @@ export default function WorksheetDashboardView({
     return Array.from(set).slice(0, 10);
   }, [entries]);
 
-  // List of active Job Cards (jobs with job cards created and not closed)
+  // List of active Job Cards that have received customer Go-Ahead / Order Number approval
   const activeJobCards = useMemo(() => {
     return jobs
       .filter((j) => {
         const hasJobCard = j.status === 'JobCardCreated' || Boolean(j.jobCardDetails?.jobCardNumber);
         const isNotClosed = j.status !== 'Closed';
-        return hasJobCard && isNotClosed;
+        const hasGoAheadApproved = hasJobGoAhead(j);
+        return hasJobCard && isNotClosed && hasGoAheadApproved;
       })
       .map((j) => {
         const jcNum = j.jobCardDetails?.jobCardNumber || j.id;
         const customer = j.customerName || 'Customer';
         const comp = [j.componentType, j.modelName].filter(Boolean).join(' - ');
         const serial = j.serialNumber ? `SN: ${j.serialNumber}` : '';
-        const order = j.jobCardDetails?.orderNumber || j.customerOrderNo ? `PO: ${j.jobCardDetails?.orderNumber || j.customerOrderNo}` : '';
+        const orderNo = j.jobCardDetails?.orderNumber || j.customerOrderNo || j.purchaseOrderNumber || '';
+        const order = orderNo ? `PO: ${orderNo}` : '';
         
         const details = [customer, comp, serial, order].filter(Boolean).join(' • ');
 
@@ -235,6 +247,7 @@ export default function WorksheetDashboardView({
           label: `${jcNum} — ${details}`,
           shortLabel: `${jcNum} (${customer})`,
           customerName: j.customerName,
+          orderNumber: orderNo,
           component: comp,
           serial: j.serialNumber,
           job: j
@@ -243,17 +256,38 @@ export default function WorksheetDashboardView({
       .sort((a, b) => a.jobNumber.localeCompare(b.jobNumber, undefined, { numeric: true }));
   }, [jobs]);
 
-  // Selected job card details for live preview
+  // Selected job card details for live preview (with fallback for legacy logs)
   const selectedJobCardInfo = useMemo(() => {
     if (!jobNumberInput.trim()) return null;
-    return (
-      activeJobCards.find(
-        (j) =>
-          j.jobNumber.toLowerCase() === jobNumberInput.trim().toLowerCase() ||
-          j.jobId.toLowerCase() === jobNumberInput.trim().toLowerCase()
-      ) || null
+    const foundActive = activeJobCards.find(
+      (j) =>
+        j.jobNumber.toLowerCase() === jobNumberInput.trim().toLowerCase() ||
+        j.jobId.toLowerCase() === jobNumberInput.trim().toLowerCase()
     );
-  }, [activeJobCards, jobNumberInput]);
+    if (foundActive) return foundActive;
+
+    const fallbackJob = jobs.find(
+      (j) =>
+        (j.jobCardDetails?.jobCardNumber && j.jobCardDetails.jobCardNumber.toLowerCase() === jobNumberInput.trim().toLowerCase()) ||
+        j.id.toLowerCase() === jobNumberInput.trim().toLowerCase()
+    );
+    if (fallbackJob) {
+      const jcNum = fallbackJob.jobCardDetails?.jobCardNumber || fallbackJob.id;
+      const orderNo = fallbackJob.jobCardDetails?.orderNumber || fallbackJob.customerOrderNo || fallbackJob.purchaseOrderNumber || '';
+      return {
+        jobId: fallbackJob.id,
+        jobNumber: jcNum,
+        label: `${jcNum} — ${fallbackJob.customerName || 'Customer'}`,
+        shortLabel: `${jcNum}`,
+        customerName: fallbackJob.customerName,
+        orderNumber: orderNo,
+        component: [fallbackJob.componentType, fallbackJob.modelName].filter(Boolean).join(' - '),
+        serial: fallbackJob.serialNumber,
+        job: fallbackJob
+      };
+    }
+    return null;
+  }, [activeJobCards, jobs, jobNumberInput]);
 
   // Extract operations/steps strictly from the selected Job Card
   const selectedJobSteps = useMemo(() => {
@@ -361,6 +395,17 @@ export default function WorksheetDashboardView({
 
     if (!jobNumberInput.trim()) {
       showFeedback('Please enter or select a Job Number.', 'error');
+      return;
+    }
+
+    // Validate that newly captured timesheet lines only link to jobs with Go-Ahead approval
+    const targetJob = jobs.find(
+      (j) =>
+        (j.jobCardDetails?.jobCardNumber && j.jobCardDetails.jobCardNumber.toLowerCase() === jobNumberInput.trim().toLowerCase()) ||
+        j.id.toLowerCase() === jobNumberInput.trim().toLowerCase()
+    );
+    if (targetJob && !hasJobGoAhead(targetJob) && !editingEntry) {
+      showFeedback(`Job #${jobNumberInput} does not have customer Go-Ahead (Order / PO #). Only jobs with Go-Ahead can be selected for timesheet capture.`, 'error');
       return;
     }
 
@@ -1138,9 +1183,14 @@ export default function WorksheetDashboardView({
 
                   {/* 4. Job Number */}
                   <div>
-                    <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700 mb-1">
-                      Job Number <span className="text-red-500">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-700">
+                        Job Number <span className="text-red-500">*</span>
+                      </label>
+                      <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-sm">
+                        Go-Ahead Only
+                      </span>
+                    </div>
                     <div className="relative">
                       <select
                         value={jobNumberInput}
@@ -1148,19 +1198,33 @@ export default function WorksheetDashboardView({
                         className="w-full bg-slate-50 focus:bg-white border border-slate-300 focus:border-blue-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-blue-950 focus:outline-hidden focus:ring-2 focus:ring-blue-100 transition-all truncate"
                         required
                       >
-                        <option value="">-- Select Job Number --</option>
+                        <option value="">
+                          {activeJobCards.length === 0 
+                            ? '-- No Go-Ahead Jobs Found --' 
+                            : '-- Select Job (Go-Ahead Approved) --'}
+                        </option>
                         {activeJobCards.map((j) => (
                           <option key={j.jobId} value={j.jobNumber}>
-                            {j.jobNumber} {j.customerName ? `(${j.customerName})` : ''}
+                            {j.jobNumber} {j.customerName ? `(${j.customerName})` : ''} {j.orderNumber ? `[PO: ${j.orderNumber}]` : ''}
                           </option>
                         ))}
                         {jobNumberInput && !activeJobCards.some((j) => j.jobNumber.toLowerCase() === jobNumberInput.trim().toLowerCase()) && (
                           <option value={jobNumberInput}>
-                            {jobNumberInput} (Archived / Closed Job)
+                            {jobNumberInput} (Archived / Non-Active)
                           </option>
                         )}
                       </select>
                     </div>
+                    {activeJobCards.length === 0 ? (
+                      <p className="text-[10px] text-amber-700 mt-1">
+                        No active jobs currently have customer Go-Ahead (PO #). Only approved jobs can be selected.
+                      </p>
+                    ) : selectedJobCardInfo?.orderNumber ? (
+                      <p className="text-[10px] text-emerald-700 font-medium mt-1 flex items-center gap-1 truncate">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                        <span>Go-Ahead Order: <strong className="font-mono">{selectedJobCardInfo.orderNumber}</strong></span>
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 

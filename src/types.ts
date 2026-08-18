@@ -5,6 +5,7 @@ export interface UserPermissions {
   canCreateJobCard: boolean;
   canStores: boolean;
   canWorksheet?: boolean;
+  canReporting?: boolean;
   canClose: boolean;
   isAdmin: boolean;
 }
@@ -243,6 +244,22 @@ export interface JobClosingDetails {
   closingNotes?: string;
   qualityReleaseSign?: string;
   closeReason?: 'completed' | 'returned';
+}
+
+/**
+ * Checks whether a job has received customer Go-Ahead / Order Number approval.
+ */
+export function hasJobGoAhead(job: Job | null | undefined): boolean {
+  if (!job) return false;
+  const orderNo = (job.jobCardDetails?.orderNumber || job.customerOrderNo || job.purchaseOrderNumber)?.trim();
+  return Boolean(
+    orderNo &&
+    orderNo !== '' &&
+    orderNo.toUpperCase() !== 'NONE' &&
+    orderNo.toUpperCase() !== 'PENDING' &&
+    orderNo.toUpperCase() !== 'NA' &&
+    orderNo.toUpperCase() !== 'N/A'
+  );
 }
 
 export interface Job {

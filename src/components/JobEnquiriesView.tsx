@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Job, JobFile, CustomColumn, ComponentMatrix, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog, WorksheetEntry, getPreQuoteId } from '../types';
+import { Job, JobFile, CustomColumn, ComponentMatrix, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, deduplicateJobFiles, ConsumableAllocationLog, WorksheetEntry, getPreQuoteId, hasJobGoAhead } from '../types';
 import { getConsumableAllocationLogs, getWorksheetEntries } from '../dbService';
 import { compressFile } from '../utils/imageCompressor';
 import JobCardDocument from './JobCardDocument';
@@ -640,17 +640,7 @@ export default function JobEnquiriesView({
   };
 
   // Helper to check if a job card has received customer order/go-ahead
-  const hasGoAhead = (job: Job): boolean => {
-    const orderNo = job.jobCardDetails?.orderNumber?.trim();
-    return Boolean(
-      orderNo &&
-      orderNo !== '' &&
-      orderNo.toUpperCase() !== 'NONE' &&
-      orderNo.toUpperCase() !== 'PENDING' &&
-      orderNo.toUpperCase() !== 'NA' &&
-      orderNo.toUpperCase() !== 'N/A'
-    );
-  };
+  const hasGoAhead = (job: Job): boolean => hasJobGoAhead(job);
 
   // Filter & Search Logic: Only include jobs with job cards assigned to them
   const jobsWithJobCards = jobs.filter(job => 
