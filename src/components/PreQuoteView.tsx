@@ -26,6 +26,7 @@ interface PreQuoteViewProps {
   componentsList: ComponentMatrix[];
   onUpdateJob: (job: Job) => Promise<void>;
   currentUser: any;
+  initialJob?: Job | null;
 }
 
 const formatCurrency = (amount: number) => 'R ' + (amount || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -34,7 +35,8 @@ export default function PreQuoteView({
   jobs,
   componentsList,
   onUpdateJob,
-  currentUser
+  currentUser,
+  initialJob
 }: PreQuoteViewProps) {
   // Helpers to group and manage deliveries
   const [selectedGroupJobs, setSelectedGroupJobs] = useState<Job[]>([]);
@@ -42,6 +44,19 @@ export default function PreQuoteView({
   const [selectedJobForMatrix, setSelectedJobForMatrix] = useState<Job | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeLeftTab, setActiveLeftTab] = useState<'ready' | 'pending' | 'waiting'>('ready');
+
+  // Sync initialJob
+  useEffect(() => {
+    if (initialJob) {
+      if (initialJob.deliveryNoteNumber) {
+        setSelectedDeliveryNote(initialJob.deliveryNoteNumber);
+        const group = jobs.filter(j => j.deliveryNoteNumber === initialJob.deliveryNoteNumber);
+        setSelectedGroupJobs(group.length > 0 ? group : [initialJob]);
+      } else {
+        setSelectedGroupJobs([initialJob]);
+      }
+    }
+  }, [initialJob?.id, jobs]);
 
   // Active Quote Draft
   const [quoteSteps, setQuoteSteps] = useState<JobQuoteStep[]>([]);

@@ -461,3 +461,35 @@ export function getMachineLabelByIdOrNumber(
   }
   return identifier;
 }
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'job_received' | 'inspection_needed' | 'quote_needed' | 'job_card_ready' | 'stores_alert' | 'worksheet_logged' | 'general';
+  targetPermission?: keyof UserPermissions | 'all';
+  jobId?: string;
+  jobNo?: string;
+  customerName?: string;
+  componentName?: string;
+  targetTab?: string;
+  createdAt: string; // ISO string
+  createdByUid?: string;
+  createdByName?: string;
+  readBy?: string[]; // Array of user UIDs who have marked it read
+  dismissedBy?: string[]; // Array of user UIDs who ticked/dismissed it
+  dismissedAt?: Record<string, string>; // uid -> ISO date
+}
+
+export interface ChatMessage {
+  id: string;
+  senderUid: string;
+  senderName: string;
+  senderEmail: string;
+  senderRole?: string;
+  text: string;
+  imageUrl?: string;
+  createdAt: string; // ISO string
+  reactions?: Record<string, string[]>; // emoji -> array of uids
+}
+

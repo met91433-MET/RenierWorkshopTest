@@ -982,71 +982,118 @@ export default function AdminCenterView({
   };
 
   return (
-    <div className="space-y-6" id="admin-center-view-root">
+    <div className="space-y-4 text-left font-sans text-slate-900" id="admin-center-view-root">
       {/* Page Header */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-sm text-center">
-        <h1 className="text-xl sm:text-2xl font-bold text-slate-800 font-display flex items-center justify-center gap-2">
-          <Shield className="w-6 h-6 text-slate-700" />
-          Admin Center
-        </h1>
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+        <div className="flex items-center gap-3">
+          <div className="bg-slate-900 text-white p-2 rounded-xl shadow-xs shrink-0">
+            <Shield className="w-4 h-4 text-blue-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 font-display">
+                Admin Center
+              </h1>
+              <span className="bg-blue-50 text-blue-700 font-extrabold text-[10px] px-2 py-0.5 rounded-full border border-blue-200">
+                System Administration
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Manage user role clearances, plant equipment directory, customer accounts, component pricing matrices, and document formats.
+            </p>
+          </div>
+        </div>
+
+        {/* Quick summary indicator */}
+        <div className="hidden lg:flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 shrink-0">
+          <span>{users.length} Users</span>
+          <span className="text-slate-300">•</span>
+          <span>{machines.length} Machines</span>
+          <span className="text-slate-300">•</span>
+          <span>{customers.length} Customers</span>
+        </div>
       </div>
 
       {/* Admin Subtabs Bar */}
-      <div className="flex border-b border-slate-200 gap-2 overflow-x-auto pb-px">
+      <div className="bg-white p-1 rounded-xl border border-slate-200/80 shadow-2xs flex items-center gap-1 overflow-x-auto">
         <button
           onClick={() => setActiveSubTab('users')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg tracking-tight transition-all cursor-pointer whitespace-nowrap ${
             activeSubTab === 'users'
-              ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          <Users className="w-4 h-4" />
-          User Roles & Access Control
+          <Users className="w-3.5 h-3.5" />
+          <span>User Roles &amp; Access</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            activeSubTab === 'users' ? 'bg-blue-800 text-white' : 'bg-slate-200 text-slate-600'
+          }`}>
+            {users.length}
+          </span>
         </button>
-        <button
-          onClick={() => setActiveSubTab('pricing')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
-            activeSubTab === 'pricing'
-              ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
-          }`}
-        >
-          <DollarSign className="w-4 h-4" />
-          Component Pricing Matrices (Excel Style)
-        </button>
+
         <button
           onClick={() => setActiveSubTab('machines')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg tracking-tight transition-all cursor-pointer whitespace-nowrap ${
             activeSubTab === 'machines'
-              ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          <Cpu className="w-4 h-4" />
-          Machines Equipment Directory
+          <Cpu className="w-3.5 h-3.5" />
+          <span>Machines &amp; Equipment</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            activeSubTab === 'machines' ? 'bg-blue-800 text-white' : 'bg-slate-200 text-slate-600'
+          }`}>
+            {machines.length}
+          </span>
         </button>
+
         <button
           onClick={() => setActiveSubTab('customers')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg tracking-tight transition-all cursor-pointer whitespace-nowrap ${
             activeSubTab === 'customers'
-              ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          <Briefcase className="w-4 h-4" />
-          Customers Directory
+          <Briefcase className="w-3.5 h-3.5" />
+          <span>Customers</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            activeSubTab === 'customers' ? 'bg-blue-800 text-white' : 'bg-slate-200 text-slate-600'
+          }`}>
+            {customers.length}
+          </span>
         </button>
+
+        <button
+          onClick={() => setActiveSubTab('pricing')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg tracking-tight transition-all cursor-pointer whitespace-nowrap ${
+            activeSubTab === 'pricing'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <DollarSign className="w-3.5 h-3.5" />
+          <span>Pricing Matrices</span>
+          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            activeSubTab === 'pricing' ? 'bg-blue-800 text-white' : 'bg-slate-200 text-slate-600'
+          }`}>
+            {componentsList.length}
+          </span>
+        </button>
+
         <button
           onClick={() => setActiveSubTab('jobCard')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 font-semibold text-xs rounded-t-xl tracking-tight transition-all border-b-2 cursor-pointer ${
+          className={`flex items-center gap-1.5 px-3 py-1.5 font-bold text-xs rounded-lg tracking-tight transition-all cursor-pointer whitespace-nowrap ${
             activeSubTab === 'jobCard'
-              ? 'border-blue-600 text-blue-600 bg-blue-50/20'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
         >
-          <Layout className="w-4 h-4" />
-          Document Editor
+          <Layout className="w-3.5 h-3.5" />
+          <span>Document Editor</span>
         </button>
       </div>
 
@@ -1272,16 +1319,16 @@ export default function AdminCenterView({
           TAB 2: COMPONENT PRICING MATRIX SPREADSHEETS (EXCEL STYLE)
           ======================================================== */}
       {activeSubTab === 'pricing' && (
-        <div className="space-y-6 text-left">
+        <div className="space-y-4 text-left">
           {/* Header Row: Selecting Pricing Table & Creating Brand New Component */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Component matrix selector */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Select Component Matrix Table</h3>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
+              <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Select Component Matrix Table</h3>
               <select
                 value={selectedCompMatrixId}
                 onChange={(e) => setSelectedCompMatrixId(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 focus:outline-hidden"
               >
                 <option value="">-- Select Table --</option>
                 {componentsList.map(comp => (
@@ -1292,7 +1339,7 @@ export default function AdminCenterView({
                 <button
                   type="button"
                   onClick={() => setMatrixToDelete(activeMatrix)}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 border border-transparent rounded-lg px-2.5 py-1.5 transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-red-500 hover:text-red-700 hover:bg-red-50 border border-transparent rounded-lg px-2 py-1 transition-colors cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Delete Entire Matrix Table
@@ -1301,13 +1348,13 @@ export default function AdminCenterView({
             </div>
 
             {/* Create brand new component type */}
-            <form onSubmit={handleCreateNewComponentTable} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2 space-y-3">
+            <form onSubmit={handleCreateNewComponentTable} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs lg:col-span-2 space-y-2.5">
               <div className="flex items-center justify-between gap-2">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Create New Component Pricing Table</h3>
+                <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Create New Component Pricing Table</h3>
                 <button
                   type="button"
                   onClick={downloadSampleExcelTemplate}
-                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors"
+                  className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors cursor-pointer"
                 >
                   <Download className="w-3 h-3 text-emerald-600" />
                   Sample Excel Template
@@ -1316,20 +1363,20 @@ export default function AdminCenterView({
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
-                  placeholder="e.g. Steering Cylinder, Front Axel"
+                  placeholder="e.g. Steering Cylinder, Front Axle"
                   value={newComponentName}
                   onChange={(e) => setNewComponentName(e.target.value)}
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:outline-hidden"
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-hidden"
                 />
                 <button
                   type="submit"
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-4 py-2 text-xs transition-all cursor-pointer flex items-center justify-center gap-1"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-3.5 py-1.5 text-xs transition-all cursor-pointer flex items-center justify-center gap-1 shrink-0"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   Create Table
                 </button>
-                <label className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-3.5 py-2 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 select-none">
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <label className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 select-none">
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                   Upload Excel Table
                   <input
                     type="file"
@@ -1375,26 +1422,26 @@ export default function AdminCenterView({
             }
 
             return (
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-0">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden space-y-0">
                 {/* Top Controls: Search / Joined Add Slider */}
-                <div className="p-5 border-b border-slate-200 bg-slate-50/40 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-4">
+                <div className="p-3.5 sm:p-4 border-b border-slate-200 bg-slate-50/40 flex flex-col xl:flex-row items-stretch xl:items-center justify-between gap-3">
                   <div>
-                    <h3 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-800 font-display flex items-center gap-2">
                       Spreadsheet: {activeMatrix.name} Pricing Matrix
                     </h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Steps are rows, Models are columns. Cell intersections specify pre-quoted prices in Rand (R).</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Steps are rows, Models are columns. Cell intersections specify pre-quoted prices in Rand (R).</p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     {/* Search Input for Model / Operation */}
-                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-blue-500 shadow-2xs">
+                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-2.5 py-1 focus-within:border-blue-500 shadow-2xs">
                       <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <input
                         type="text"
                         placeholder="Search model / operation..."
                         value={matrixSearchQuery}
                         onChange={(e) => setMatrixSearchQuery(e.target.value)}
-                        className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-38 sm:w-44 font-medium text-slate-700 placeholder:text-slate-400"
+                        className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-36 sm:w-44 font-medium text-slate-700 placeholder:text-slate-400"
                       />
                       {matrixSearchQuery && (
                         <button
@@ -1408,13 +1455,13 @@ export default function AdminCenterView({
                     </div>
 
                     {/* Joined Add Control with Slider Toggle */}
-                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1.5 shadow-2xs">
+                    <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
                       {/* Segmented Slider Selector */}
-                      <div className="relative flex items-center bg-slate-100 rounded-lg p-0.5 select-none font-bold text-[11px]">
+                      <div className="relative flex items-center bg-slate-100 rounded-lg p-0.5 select-none font-bold text-[10px]">
                         <button
                           type="button"
                           onClick={() => setAddEntryType('step')}
-                          className={`relative z-10 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                          className={`relative z-10 px-2 py-0.5 rounded-md transition-all cursor-pointer ${
                             addEntryType === 'step'
                               ? 'bg-purple-600 text-white shadow-xs font-bold'
                               : 'text-slate-500 hover:text-slate-700 font-semibold'
@@ -1425,7 +1472,7 @@ export default function AdminCenterView({
                         <button
                           type="button"
                           onClick={() => setAddEntryType('model')}
-                          className={`relative z-10 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                          className={`relative z-10 px-2 py-0.5 rounded-md transition-all cursor-pointer ${
                             addEntryType === 'model'
                               ? 'bg-blue-600 text-white shadow-xs font-bold'
                               : 'text-slate-500 hover:text-slate-700 font-semibold'
@@ -1453,7 +1500,7 @@ export default function AdminCenterView({
                         type="button"
                         onClick={handleUnifiedAddEntry}
                         disabled={!addEntryValue.trim()}
-                        className={`font-bold text-[11px] px-3 py-1 rounded-lg cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed text-white shrink-0 ${
+                        className={`font-bold text-[11px] px-2.5 py-1 rounded-lg cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed text-white shrink-0 ${
                           addEntryType === 'step' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-blue-600 hover:bg-blue-700'
                         }`}
                       >
@@ -1464,9 +1511,9 @@ export default function AdminCenterView({
                 </div>
 
                 {/* Excel Format Instructions Banner */}
-                <div className="px-5 py-2.5 bg-emerald-50/60 border-b border-emerald-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-emerald-800">
+                <div className="px-4 py-2 bg-emerald-50/60 border-b border-emerald-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs text-emerald-800">
                   <div className="flex items-center gap-2 font-medium text-[11px]">
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>
                       <strong>Excel Format:</strong> Column 1 contains steps/operations. Columns 2+ contain model names. Cell intersections set prices in Rand (R).
                     </span>
@@ -1481,7 +1528,7 @@ export default function AdminCenterView({
                 </div>
 
                 {/* SpreadSheet HTML Table - Scroll view showing ~15 steps at a time with sticky headers */}
-                <div className="p-4">
+                <div className="p-3 sm:p-4">
                   <div className="max-h-[600px] overflow-auto border border-slate-200 rounded-xl shadow-2xs relative">
                     <table className="w-full border-collapse text-[10px]">
                       <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs">
@@ -1537,10 +1584,10 @@ export default function AdminCenterView({
               </div>
             );
           })() : (
-            <div className="bg-white p-12 rounded-2xl border border-slate-200 shadow-sm text-center text-slate-400">
-              <AlertCircle className="w-12 h-12 mx-auto mb-2 text-slate-300" />
-              <h3 className="font-semibold text-slate-700">No Component Matrices Found</h3>
-              <p className="text-xs mt-1">Please create a component matrix table above to start managing Repair steps and Model pricing.</p>
+            <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-xs text-center text-slate-400">
+              <AlertCircle className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+              <h3 className="font-semibold text-slate-700 text-xs">No Component Matrices Found</h3>
+              <p className="text-[11px] mt-1">Please create a component matrix table above to start managing Repair steps and Model pricing.</p>
             </div>
           )}
         </div>
@@ -1550,29 +1597,29 @@ export default function AdminCenterView({
           TAB 3B: MACHINES INVENTORY & EXCEL UPLOAD
           ======================================================== */}
       {activeSubTab === 'machines' && (
-        <div className="space-y-6 text-left">
+        <div className="space-y-4 text-left">
           {/* Machines Top Banner & Actions Bar */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
-                <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
-                  <Cpu className="w-5 h-5 text-blue-600" />
+                <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-blue-600" />
                   Plant Machinery &amp; Equipment Directory
                 </h2>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-[11px] text-slate-500 mt-0.5">
                   Manage plant machinery and equipment details. Each machine can be viewed as a standalone Job Card spec sheet with linked repair histories.
                 </p>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
                 {/* Export to Excel */}
                 <button
                   type="button"
                   onClick={handleExportMachinesExcel}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition-all flex items-center gap-1.5 cursor-pointer"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
                   <span>Export ({machines.length})</span>
                 </button>
 
@@ -1580,41 +1627,41 @@ export default function AdminCenterView({
                 <button
                   type="button"
                   onClick={() => openAddMachineModal()}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5" />
                   <span>Add Machine</span>
                 </button>
               </div>
             </div>
 
             {/* Search & Filter Bar */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-2 border-t border-slate-100">
               <div className="relative flex-1 w-full">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="text"
                   placeholder="Search machines by name, serial number, make, model, location..."
                   value={machinesSearchQuery}
                   onChange={(e) => setMachinesSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 font-medium"
                 />
                 {machinesSearchQuery && (
                   <button
                     onClick={() => setMachinesSearchQuery('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-3 h-3" />
                   </button>
                 )}
               </div>
 
-              <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
-                <span className="text-xs font-semibold text-slate-500 hidden md:inline">Status:</span>
+              <div className="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
+                <span className="text-[11px] font-semibold text-slate-500 hidden md:inline">Status:</span>
                 <select
                   value={machinesStatusFilter}
                   onChange={(e) => setMachinesStatusFilter(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-700 focus:outline-hidden cursor-pointer"
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-hidden cursor-pointer"
                 >
                   <option value="all">All Statuses</option>
                   <option value="Operational">Operational</option>
@@ -1644,11 +1691,11 @@ export default function AdminCenterView({
 
             return (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+                <div className="px-4 py-2.5 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-slate-700">Machines Registered ({filteredMachines.length})</span>
                   </div>
-                  <span className="text-[11px] font-medium text-slate-400">Click "View Card" on any row to open its specification document</span>
+                  <span className="text-[11px] font-medium text-slate-400">Click "View Card" on any row to open specification document</span>
                 </div>
 
                 {filteredMachines.length > 0 ? (
@@ -1656,12 +1703,12 @@ export default function AdminCenterView({
                     <table className="w-full text-xs text-left">
                       <thead className="sticky top-0 z-20 bg-slate-100 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200 shadow-2xs">
                         <tr>
-                          <th className="p-3.5 bg-slate-100">Machine Number</th>
-                          <th className="p-3.5 bg-slate-100">Machine Name + Model</th>
-                          <th className="p-3.5 bg-slate-100">Machine Type</th>
-                          <th className="p-3.5 bg-slate-100">Area Code</th>
-                          <th className="p-3.5 bg-slate-100">Status State (Slider)</th>
-                          <th className="p-3.5 text-right bg-slate-100">Actions</th>
+                          <th className="py-2.5 px-3 bg-slate-100">Machine Number</th>
+                          <th className="py-2.5 px-3 bg-slate-100">Machine Name + Model</th>
+                          <th className="py-2.5 px-3 bg-slate-100">Machine Type</th>
+                          <th className="py-2.5 px-3 bg-slate-100">Area Code</th>
+                          <th className="py-2.5 px-3 bg-slate-100">Status State (Slider)</th>
+                          <th className="py-2.5 px-3 text-right bg-slate-100">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
@@ -1669,22 +1716,22 @@ export default function AdminCenterView({
                           const nameAndModel = [m.make, m.model].filter(Boolean).join(' ') || m.machineName || 'N/A';
                           return (
                             <tr key={m.id} className="hover:bg-blue-50/30 transition-colors">
-                              <td className="p-3.5 font-mono font-extrabold text-blue-700">
+                              <td className="py-2.5 px-3 font-mono font-extrabold text-blue-700">
                                 {m.serialNumber}
                               </td>
-                              <td className="p-3.5">
+                              <td className="py-2.5 px-3">
                                 <p className="font-extrabold text-slate-900">{nameAndModel}</p>
                               </td>
-                              <td className="p-3.5 text-slate-700 font-semibold">
+                              <td className="py-2.5 px-3 text-slate-700 font-semibold">
                                 {m.machineType || 'N/A'}
                               </td>
-                              <td className="p-3.5 text-slate-600 font-mono font-bold">
-                                <span className="bg-slate-100 border border-slate-200 text-slate-800 px-2 py-1 rounded-md text-[11px] inline-flex items-center gap-1">
+                              <td className="py-2.5 px-3 text-slate-600 font-mono font-bold">
+                                <span className="bg-slate-100 border border-slate-200 text-slate-800 px-2 py-0.5 rounded-md text-[11px] inline-flex items-center gap-1">
                                   <MapPin className="w-3 h-3 text-slate-400" />
                                   {m.location || 'N/A'}
                                 </span>
                               </td>
-                            <td className="p-3.5">
+                            <td className="py-2.5 px-3">
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
@@ -1695,13 +1742,13 @@ export default function AdminCenterView({
                                       await onSaveMachine({ ...m, status: nextStatus });
                                     }
                                   }}
-                                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
+                                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${
                                     m.status === 'Operational' ? 'bg-emerald-500' : 'bg-amber-500'
                                   }`}
                                   title={`Toggle machine status (Currently ${m.status || 'Operational'})`}
                                 >
                                   <span
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
                                       m.status === 'Operational' ? 'translate-x-5' : 'translate-x-0'
                                     }`}
                                   />
@@ -1715,23 +1762,23 @@ export default function AdminCenterView({
                                 </span>
                               </div>
                             </td>
-                            <td className="p-3.5 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
+                            <td className="py-2.5 px-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
                                 <button
                                   type="button"
                                   onClick={() => setSelectedMachineForCard(m)}
-                                  className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-800 rounded-lg border border-blue-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
+                                  className="p-1 bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-800 rounded-lg border border-blue-200 transition-all flex items-center justify-center cursor-pointer shadow-2xs"
                                   title="View Machine Specification Card"
                                 >
-                                  <Eye className="w-4 h-4" />
+                                  <Eye className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => openAddMachineModal(m)}
-                                  className="p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer border border-slate-200"
+                                  className="p-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer border border-slate-200"
                                   title="Edit Machine Details"
                                 >
-                                  <Edit className="w-4 h-4" />
+                                  <Edit className="w-3.5 h-3.5" />
                                 </button>
                                 {onDeleteMachine && (
                                   <button
@@ -1740,10 +1787,10 @@ export default function AdminCenterView({
                                       e.stopPropagation();
                                       setMachineToDelete(m);
                                     }}
-                                    className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border border-red-200"
+                                    className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer border border-red-200"
                                     title="Delete Machine Record"
                                   >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="w-3.5 h-3.5" />
                                   </button>
                                 )}
                               </div>
@@ -1755,10 +1802,10 @@ export default function AdminCenterView({
                     </table>
                   </div>
                 ) : (
-                  <div className="p-12 text-center text-slate-400 space-y-2">
-                    <Cpu className="w-10 h-10 mx-auto text-slate-300" />
-                    <p className="font-semibold text-slate-700 text-sm">No machines found</p>
-                    <p className="text-xs">Upload an Excel sheet or click "Add Machine" to register your plant equipment.</p>
+                  <div className="p-8 text-center text-slate-400 space-y-2">
+                    <Cpu className="w-8 h-8 mx-auto text-slate-300" />
+                    <p className="font-semibold text-slate-700 text-xs">No machines found</p>
+                    <p className="text-[11px]">Upload an Excel sheet or click "Add Machine" to register your plant equipment.</p>
                   </div>
                 )}
               </div>
@@ -1771,67 +1818,67 @@ export default function AdminCenterView({
           TAB 4: CUSTOMERS DIRECTORY
           ======================================================== */}
       {activeSubTab === 'customers' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-left">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-left">
           {/* Add / Edit Customer Form */}
-          <form onSubmit={handleSaveCustomerForm} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 h-fit">
-            <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
+          <form onSubmit={handleSaveCustomerForm} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3 h-fit">
+            <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
               {editingCustomer ? 'Edit Customer Account' : 'Register New Customer'}
             </h2>
 
-            <div className="space-y-3 pt-2">
+            <div className="space-y-2.5 pt-1">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Company Name *</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Company Name *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Caterpillar Repairs"
                   value={custName}
                   onChange={(e) => setCustName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:outline-hidden"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-hidden"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Contact Person</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Contact Person</label>
                 <input
                   type="text"
                   placeholder="e.g. Sipho Ndlovu"
                   value={custContact}
                   onChange={(e) => setCustContact(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:outline-hidden"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-hidden"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Email Address</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Email Address</label>
                 <input
                   type="email"
                   placeholder="e.g. s.ndlovu@anglo.com"
                   value={custEmail}
                   onChange={(e) => setCustEmail(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:outline-hidden"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-hidden"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Phone Number</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Phone Number</label>
                 <input
                   type="text"
                   placeholder="e.g. +27 11 898 8500"
                   value={custPhone}
                   onChange={(e) => setCustPhone(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:outline-hidden"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-hidden"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Physical Address</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Physical Address</label>
                 <textarea
                   rows={2}
                   placeholder="Street address or depot hub details..."
                   value={custAddress}
                   onChange={(e) => setCustAddress(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:outline-hidden"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-medium focus:outline-hidden"
                 />
               </div>
 
@@ -1839,7 +1886,7 @@ export default function AdminCenterView({
                 <div className="flex gap-2">
                   <button
                     type="submit"
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     {editingCustomer ? 'Update Account' : 'Add Customer'}
                   </button>
@@ -1847,7 +1894,7 @@ export default function AdminCenterView({
                     <button
                       type="button"
                       onClick={() => handleEditCustomer(null)}
-                      className="bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                      className="bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -1866,7 +1913,7 @@ export default function AdminCenterView({
                     <button
                       type="button"
                       onClick={() => customerFileInputRef.current?.click()}
-                      className="w-full flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
+                      className="w-full flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold py-1.5 rounded-xl text-xs transition-colors cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5" />
                       Upload
@@ -1881,10 +1928,10 @@ export default function AdminCenterView({
           </form>
 
           {/* Customer list table */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2 space-y-4">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Customers Directory ({customers.length})</h2>
-              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-blue-500 shadow-2xs">
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs lg:col-span-2 space-y-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              <h2 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Customers Directory ({customers.length})</h2>
+              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-2.5 py-1 focus-within:border-blue-500 shadow-2xs">
                 <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <input
                   type="text"
@@ -1907,11 +1954,11 @@ export default function AdminCenterView({
             <div className="border border-slate-200 rounded-xl overflow-hidden">
               <table className="w-full text-xs text-left">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-400 font-semibold border-b border-slate-200 text-[10px] uppercase">
-                    <th className="p-3 pl-4">Company</th>
-                    <th className="p-3">Contact Person</th>
-                    <th className="p-3">Phone & Email</th>
-                    <th className="p-3 text-right pr-4">Action</th>
+                  <tr className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 text-[10px] uppercase">
+                    <th className="py-2.5 px-3 pl-4">Company</th>
+                    <th className="py-2.5 px-3">Contact Person</th>
+                    <th className="py-2.5 px-3">Phone & Email</th>
+                    <th className="py-2.5 px-3 text-right pr-4">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -1926,28 +1973,28 @@ export default function AdminCenterView({
                     );
                   }).map(cust => (
                     <tr key={cust.id} className="hover:bg-slate-50/50">
-                      <td className="p-3 pl-4">
-                        <p className="font-bold text-slate-700">{cust.name}</p>
+                      <td className="py-2.5 px-3 pl-4">
+                        <p className="font-bold text-slate-800">{cust.name}</p>
                         <p className="text-slate-400 font-mono text-[9px] truncate max-w-[150px] mt-0.5">{cust.address || 'No Address'}</p>
                       </td>
-                      <td className="p-3 font-semibold text-slate-600">
+                      <td className="py-2.5 px-3 font-semibold text-slate-600">
                         {cust.contactPerson || '--'}
                       </td>
-                      <td className="p-3">
+                      <td className="py-2.5 px-3">
                         <p className="font-mono text-slate-600">{cust.phone || 'No Phone'}</p>
                         <p className="text-slate-400 font-mono text-[10px] mt-0.5">{cust.email || 'No Email'}</p>
                       </td>
-                      <td className="p-3 text-right pr-4">
+                      <td className="py-2.5 px-3 text-right pr-4">
                         <div className="flex gap-1.5 justify-end">
                           <button
                             onClick={() => handleEditCustomer(cust)}
-                            className="text-blue-600 hover:text-blue-800 font-semibold bg-blue-50 hover:bg-blue-100 border border-blue-100 px-2 py-1 rounded-md text-[10px]"
+                            className="text-blue-600 hover:text-blue-800 font-semibold bg-blue-50 hover:bg-blue-100 border border-blue-100 px-2 py-0.5 rounded-md text-[10px] cursor-pointer"
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => handleDeleteCustomerClick(cust.id)}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded-md"
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded-md cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1966,22 +2013,22 @@ export default function AdminCenterView({
           TAB 5: DOCUMENT EDITOR (JOB CARD & PREQUOTE FORMATS)
           ======================================================== */}
       {activeSubTab === 'jobCard' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Top Bar with Layout Options Selector & Actions */}
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3 text-left">
             <div>
               <div className="flex items-center gap-3">
-                <h2 className="text-base font-bold text-slate-800 font-display flex items-center gap-2">
-                  <Layout className="w-5 h-5 text-blue-600" />
+                <h2 className="text-sm font-bold text-slate-800 font-display flex items-center gap-2">
+                  <Layout className="w-4 h-4 text-blue-600" />
                   Document Editor
                 </h2>
 
                 {/* Document Type Selector Toggle */}
-                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
+                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold">
                   <button
                     type="button"
                     onClick={() => setActiveDocLayout('jobCard')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                       activeDocLayout === 'jobCard'
                         ? 'bg-blue-600 text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -1992,7 +2039,7 @@ export default function AdminCenterView({
                   <button
                     type="button"
                     onClick={() => setActiveDocLayout('preQuote')}
-                    className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
                       activeDocLayout === 'preQuote'
                         ? 'bg-purple-600 text-white shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -2003,18 +2050,18 @@ export default function AdminCenterView({
                 </div>
               </div>
 
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-[11px] text-slate-500 mt-0.5">
                 {activeDocLayout === 'jobCard'
                   ? 'Customize A4 Portrait Job Card layout format, move logo, adjust line weights, toggle tables, and configure field labels.'
                   : 'Customize official PreQuote document format layout, logo alignment, header branding, and VAT calculation rules.'}
               </p>
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={handleResetFormat}
-                className="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Reset Defaults
@@ -2023,22 +2070,22 @@ export default function AdminCenterView({
                 type="button"
                 onClick={handleSaveFormat}
                 disabled={formatSaving}
-                className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {formatSaving ? (
-                  <Sparkles className="w-4 h-4 animate-spin" />
+                  <Sparkles className="w-3.5 h-3.5 animate-spin" />
                 ) : formatSuccessMsg ? (
-                  <CheckCircle className="w-4 h-4 text-emerald-300" />
+                  <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
                 ) : (
-                  <Save className="w-4 h-4" />
+                  <Save className="w-3.5 h-3.5" />
                 )}
-                {formatSaving ? 'Saving...' : formatSuccessMsg ? 'Saved Layout!' : 'Save Format Layout'}
+                {formatSaving ? 'Saving...' : formatSuccessMsg ? 'Saved!' : 'Save Format'}
               </button>
             </div>
           </div>
 
           {/* Grid Layout: Controls on Left, Live A4 Preview on Right */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
             {/* Left Controls Pane */}
             <div className="lg:col-span-6 space-y-5">
               {/* Card 1: Logo & Company Branding */}

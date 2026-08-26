@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { 
@@ -10,8 +10,11 @@ import {
   CustomColumn, 
   UserPermissions,
   JobCardFormatConfig,
-  DEFAULT_JOB_CARD_FORMAT 
+  DEFAULT_JOB_CARD_FORMAT,
+  AppNotification,
+  ChatMessage
 } from './types';
+import { playChatNotificationSound } from './utils/soundEffects';
 import { 
   getJobs, 
   getCustomers, 
@@ -42,7 +45,14 @@ import {
   subscribeComponentMatrices,
   subscribeCustomColumns,
   subscribeJobCardFormatConfig,
-  subscribeUsers
+  subscribeUsers,
+  subscribeNotifications,
+  subscribeChatMessages,
+  markNotificationDismissed,
+  markAllNotificationsDismissed,
+  sendChatMessage,
+  toggleChatReaction,
+  createNotification
 } from './dbService';
 
 import LoginView from './components/LoginView';
@@ -57,6 +67,8 @@ import AdminCenterView from './components/AdminCenterView';
 import StoresDashboardView from './components/StoresDashboardView';
 import WorksheetDashboardView from './components/WorksheetDashboardView';
 import WorksheetReportsView from './components/WorksheetReportsView';
+import TopUserBanner from './components/TopUserBanner';
+import CompanyChatDrawer from './components/CompanyChatDrawer';
 
 import { 
   Wrench, 
@@ -69,7 +81,7 @@ import {
   ShieldAlert, 
   LogOut, 
   User, 
-  RefreshCw,
+  RefreshCw, 
   Clock,
   Lock,
   Search,
@@ -104,6 +116,25 @@ export default function App() {
     }
     return DEFAULT_JOB_CARD_FORMAT;
   });
+
+  // Notifications & Company Group Chat State
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [lastReadChatTimestamp, setLastReadChatTimestamp] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem('workshop_chat_last_read_active');
+      return stored ? parseInt(stored, 10) : 0;
+    } catch {
+      return 0;
+    }
+  });
+
+  // Track known chat message IDs to play sound ONLY for newly received messages
+  const knownChatMessageIdsRef = useRef<Set<string>>(new Set());
+  const initialChatLoadedRef = useRef<boolean>(false);
+  const isChatOpenRef = useRef<boolean>(false);
+  isChatOpenRef.current = isChatOpen;
 
   // Navigation & Toggle State
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -142,6 +173,8 @@ export default function App() {
               canQuote: isEmailAdmin,
               canCreateJobCard: isEmailAdmin,
               canStores: isEmailAdmin,
+              canWorksheet: isEmailAdmin,
+              canReporting: isEmailAdmin,
               canClose: isEmailAdmin,
               isAdmin: isEmailAdmin
             };
@@ -223,6 +256,32 @@ export default function App() {
         setJobCardFormat(fetchedFormat);
       }));
 
+      unsubs.push(subscribeNotifications((fetchedNotifs) => {
+        setNotifications(fetchedNotifs);
+      }));
+
+      unsubs.push(subscribeChatMessages((fetchedMsgs) => {
+        setChatMessages(fetchedMsgs);
+
+        // First initial batch: record existing message IDs without playing sound
+        if (!initialChatLoadedRef.current) {
+          initialChatLoadedRef.current = true;
+          fetchedMsgs.forEach(m => knownChatMessageIdsRef.current.add(m.id));
+        } else {
+          // Identify newly arrived messages
+          const newMessages = fetchedMsgs.filter(m => !knownChatMessageIdsRef.current.has(m.id));
+          if (newMessages.length > 0) {
+            // Check if any newly arrived message was sent by someone other than current user
+            const hasFromOtherUser = newMessages.some(m => !userProfile || m.senderUid !== userProfile.uid);
+            if (hasFromOtherUser) {
+              playChatNotificationSound();
+            }
+            // Update known messages set
+            newMessages.forEach(m => knownChatMessageIdsRef.current.add(m.id));
+          }
+        }
+      }));
+
       if (userProfile.permissions.isAdmin) {
         unsubs.push(subscribeUsers((fetchedUsers) => {
           setUsersList(fetchedUsers);
@@ -236,6 +295,47 @@ export default function App() {
       unsubs.forEach(unsub => unsub());
     };
   }, [user, userProfile?.uid, userProfile?.permissions.isAdmin]);
+
+  // Sync lastReadChatTimestamp with user profile
+  useEffect(() => {
+    if (userProfile?.uid) {
+      try {
+        const stored = localStorage.getItem(`workshop_chat_last_read_${userProfile.uid}`);
+        if (stored) {
+          setLastReadChatTimestamp(parseInt(stored, 10));
+        } else {
+          // First time this user signs in, mark historical messages as read
+          const now = Date.now();
+          setLastReadChatTimestamp(now);
+          localStorage.setItem(`workshop_chat_last_read_${userProfile.uid}`, now.toString());
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [userProfile?.uid]);
+
+  // When chat drawer is open, keep lastReadChatTimestamp updated to now
+  useEffect(() => {
+    if (isChatOpen) {
+      const now = Date.now();
+      setLastReadChatTimestamp(now);
+      if (userProfile?.uid) {
+        try {
+          localStorage.setItem(`workshop_chat_last_read_${userProfile.uid}`, now.toString());
+        } catch {}
+      }
+    }
+  }, [isChatOpen, chatMessages.length, userProfile?.uid]);
+
+  // Compute unread chat count - only counts messages from other users newer than lastReadChatTimestamp
+  const unreadChatCount = isChatOpen
+    ? 0
+    : chatMessages.filter(m => {
+        if (userProfile && m.senderUid === userProfile.uid) return false;
+        const msgTime = new Date(m.createdAt).getTime();
+        return !isNaN(msgTime) && msgTime > lastReadChatTimestamp;
+      }).length;
 
   const loadAllERPData = async () => {
     setDataLoading(true);
@@ -294,16 +394,154 @@ export default function App() {
     }
   };
 
-  // 4. Handle Save Actions (Auto-synced via Firestore listeners!)
+  // 4. Handle Save Actions with Stage-Transition Automated Workflow Notifications
   const handleSaveJobs = async (newJobs: Job[]) => {
     for (const job of newJobs) {
       await saveJob(job);
+      const displayJobNo = job.jobCardDetails?.jobCardNumber || job.id;
+
+      // Trigger automatic workflow notification for Inspectors
+      await createNotification({
+        type: 'job_received',
+        targetPermission: 'canInspect',
+        targetTab: 'inspection',
+        jobId: job.id,
+        jobNo: displayJobNo,
+        customerName: job.customerName,
+        componentName: job.componentType,
+        title: 'New Component Arrived for Inspection',
+        message: `Job #${displayJobNo} (${job.componentType || 'Component'}) for ${job.customerName || 'Customer'} has arrived from receiving and is awaiting technical inspection.`,
+        createdByUid: userProfile?.uid || 'receiver',
+        createdByName: userProfile?.displayName || userProfile?.email || 'Receiving Desk'
+      }).catch(err => console.error("Notification creation failed:", err));
     }
     setActiveTab('dashboard'); // Redirect to dashboard to see newly captured jobs
   };
 
   const handleUpdateJob = async (updatedJob: Job) => {
+    const previousJob = jobs.find(j => j.id === updatedJob.id);
     await saveJob(updatedJob);
+    const displayJobNo = updatedJob.jobCardDetails?.jobCardNumber || updatedJob.id;
+
+    // Check stage transitions to alert relevant roles:
+    if (previousJob) {
+      // 1. If moved to Inspected -> Alert Quoting Estimators
+      if (previousJob.status !== 'Inspected' && updatedJob.status === 'Inspected') {
+        await createNotification({
+          type: 'inspection_needed',
+          targetPermission: 'canQuote',
+          targetTab: 'quoting',
+          jobId: updatedJob.id,
+          jobNo: displayJobNo,
+          customerName: updatedJob.customerName,
+          componentName: updatedJob.componentType,
+          title: 'Inspection Completed - Pre-Quote Needed',
+          message: `Job #${displayJobNo} inspection has been completed by ${userProfile?.displayName || 'Inspector'}. Ready for Pre-Quote calculation.`,
+          createdByUid: userProfile?.uid || 'inspector',
+          createdByName: userProfile?.displayName || userProfile?.email || 'Technical Inspector'
+        }).catch(err => console.error("Notification creation failed:", err));
+      }
+      // 2. If moved to PreQuoted -> Alert Job Card Creators
+      else if (previousJob.status !== 'PreQuoted' && updatedJob.status === 'PreQuoted') {
+        await createNotification({
+          type: 'quote_needed',
+          targetPermission: 'canCreateJobCard',
+          targetTab: 'jobcard',
+          jobId: updatedJob.id,
+          jobNo: displayJobNo,
+          customerName: updatedJob.customerName,
+          componentName: updatedJob.componentType,
+          title: 'Pre-Quote Complete - Job Card Ready',
+          message: `Pre-quote for Job #${displayJobNo} (${updatedJob.componentType || 'Component'}) is approved. Ready for Job Card creation.`,
+          createdByUid: userProfile?.uid || 'quoter',
+          createdByName: userProfile?.displayName || userProfile?.email || 'Estimating Desk'
+        }).catch(err => console.error("Notification creation failed:", err));
+      }
+      // 3. If Job Card is created / active in workshop -> Alert Workshop and Stores
+      else if (previousJob.status !== 'JobCardCreated' && updatedJob.status === 'JobCardCreated') {
+        await createNotification({
+          type: 'job_card_ready',
+          targetPermission: 'canWorksheet',
+          targetTab: 'worksheet',
+          jobId: updatedJob.id,
+          jobNo: displayJobNo,
+          customerName: updatedJob.customerName,
+          componentName: updatedJob.componentType,
+          title: 'Job Card Active in Workshop',
+          message: `Job Card #${displayJobNo} is now active in production. Operators can log machine timesheets and allocate parts.`,
+          createdByUid: userProfile?.uid || 'planner',
+          createdByName: userProfile?.displayName || userProfile?.email || 'Production Planner'
+        }).catch(err => console.error("Notification creation failed:", err));
+      }
+    }
+  };
+
+  // Notification Dismissal Handlers
+  const handleDismissNotification = async (notificationId: string) => {
+    if (!userProfile) return;
+    // Optimistic UI state update
+    setNotifications(prev => prev.map(n => {
+      if (n.id === notificationId) {
+        const dismissedBy = Array.from(new Set([...(n.dismissedBy || []), userProfile.uid]));
+        const dismissedAt = { ...(n.dismissedAt || {}), [userProfile.uid]: new Date().toISOString() };
+        return { ...n, dismissedBy, dismissedAt };
+      }
+      return n;
+    }));
+    await markNotificationDismissed(notificationId, userProfile.uid);
+  };
+
+  const handleDismissAllNotifications = async (notificationIds: string[]) => {
+    if (!userProfile) return;
+    const now = new Date().toISOString();
+    setNotifications(prev => prev.map(n => {
+      if (notificationIds.includes(n.id)) {
+        const dismissedBy = Array.from(new Set([...(n.dismissedBy || []), userProfile.uid]));
+        const dismissedAt = { ...(n.dismissedAt || {}), [userProfile.uid]: now };
+        return { ...n, dismissedBy, dismissedAt };
+      }
+      return n;
+    }));
+    await markAllNotificationsDismissed(notificationIds, userProfile.uid);
+  };
+
+  // Navigation from Notification click
+  const handleNavigateFromNotification = (targetTab: string, jobId?: string) => {
+    if (jobId) {
+      const foundJob = jobs.find(j => j.id === jobId || j.jobCardDetails?.jobCardNumber === jobId);
+      if (foundJob) {
+        setSelectedJobContext(foundJob);
+      }
+    }
+    setActiveTab(targetTab);
+  };
+
+  // Company Group Chat Handlers
+  const handleSendMessage = async ({ text, imageUrl }: { text: string; imageUrl?: string }) => {
+    if (!userProfile) return;
+    const roleName = userProfile.permissions.isAdmin 
+      ? 'Administrator' 
+      : userProfile.permissions.canInspect 
+        ? 'Inspector' 
+        : userProfile.permissions.canQuote 
+          ? 'Estimator' 
+          : userProfile.permissions.canStores
+            ? 'Stores'
+            : 'Operator';
+
+    await sendChatMessage({
+      senderUid: userProfile.uid,
+      senderName: userProfile.displayName || userProfile.email.split('@')[0],
+      senderEmail: userProfile.email,
+      senderRole: roleName,
+      text,
+      imageUrl
+    });
+  };
+
+  const handleToggleChatReaction = async (messageId: string, emoji: string) => {
+    if (!userProfile) return;
+    await toggleChatReaction(messageId, emoji, userProfile.uid);
   };
 
   const handleSaveCustomer = async (cust: Customer) => {
@@ -359,60 +597,71 @@ export default function App() {
     const p = userProfile.permissions;
     if (p.isAdmin) return true; // Admins have full override permission!
 
-    switch(tabName) {
-      case 'dashboard': return true;
-      case 'worksheet': return Boolean(p.canWorksheet);
-      case 'reporting': return Boolean(p.canReporting);
-      case 'stores': return Boolean(p.canStores);
-      case 'receiving': return Boolean(p.canReceive || p.canCreateJobCard);
-      case 'inspection': return Boolean(p.canInspect || p.canCreateJobCard);
-      case 'quoting': return Boolean(p.canQuote || p.canCreateJobCard);
-      case 'jobcard': return Boolean(p.canCreateJobCard);
+    switch (tabName) {
+      case 'dashboard':
+        return true; // Everyone can view the primary dashboard
+      case 'receiving':
+        return !!p.canReceive;
+      case 'inspection':
+        return !!p.canInspect;
+      case 'quoting':
+        return !!p.canQuote;
+      case 'jobcard':
+        return !!p.canCreateJobCard;
+      case 'stores':
+        return !!p.canStores;
+      case 'worksheet':
+        return !!p.canWorksheet;
+      case 'reporting':
+        return !!p.canReporting;
       case 'enquiries':
-      case 'closing': return Boolean(p.canClose || p.canCreateJobCard);
-      case 'admin': return Boolean(p.isAdmin);
-      default: return false;
+        return true; // Read-only enquiries open to all authenticated users
+      case 'closing':
+        return !!p.canClose;
+      case 'admin':
+        return !!p.isAdmin;
+      default:
+        return false;
     }
   };
 
-  // Automatically redirect user if current activeTab is not permitted
-  useEffect(() => {
-    if (userProfile && !hasAccess(activeTab)) {
-      const allowed = ['dashboard', 'worksheet', 'reporting', 'receiving', 'inspection', 'quoting', 'jobcard', 'enquiries', 'stores', 'admin'].find(tab => hasAccess(tab));
-      if (allowed) {
-        setActiveTab(allowed);
-      }
-    }
-  }, [userProfile, activeTab]);
-
-  // Loading Screens
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center font-sans">
-        <Wrench className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-        <h2 className="text-lg font-bold text-slate-800 font-display">Initializing MES Workshop3...</h2>
-        <p className="text-xs text-slate-400 mt-1">Connecting to secure Cloud Run server...</p>
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-slate-900 text-white font-sans">
+        <div className="bg-blue-600 p-3 rounded-2xl mb-4 animate-bounce">
+          <Wrench className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="text-xl font-bold font-display">MES Workshop3 Repair ERP</h2>
+        <p className="text-slate-400 text-xs mt-2 flex items-center gap-2">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          Connecting to secure workshop cloud...
+        </p>
       </div>
     );
   }
 
-  // If not logged in, show login page
+  // If no authenticated user, render the Login/Registration view
   if (!user || !userProfile) {
-    return <LoginView onLoginSuccess={(profile) => setUserProfile(profile)} />;
+    return (
+      <LoginView 
+        onLoginSuccess={(profile) => {
+          setUserProfile(profile);
+        }} 
+      />
+    );
   }
 
-  // Sidebar Menu Definitions
+  // Navigation Items
   const navigationItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'receiving', label: '1. Job Receiving', icon: FileSpreadsheet, stage: 'Stage 1' },
+    { id: 'dashboard', label: 'Workplace Overview', icon: LayoutDashboard },
+    { id: 'receiving', label: '1. Receiving', icon: FileSpreadsheet, stage: 'Stage 1' },
     { id: 'inspection', label: '2. Inspection', icon: ClipboardCheck, stage: 'Stage 2' },
-    { id: 'quoting', label: '3. Pre Quote', icon: Calculator, stage: 'Stage 3' },
-    { id: 'jobcard', label: '4. Job Card Creation', icon: CalendarRange, stage: 'Stage 4' },
-    { id: 'enquiries', label: '5. Job Enquiries', icon: Search, stage: 'Stage 5' },
-    { id: 'stores', label: 'Stores Inventory', icon: Boxes },
-    { id: 'worksheet', label: 'Worksheet Logs', icon: BookOpen },
-    { id: 'reporting', label: 'Reporting', icon: BarChart3 },
-    { id: 'admin', label: 'Admin Center', icon: Lock, isAdminOnly: true },
+    { id: 'quoting', label: '3. Pre-Quote', icon: Calculator, stage: 'Stage 3' },
+    { id: 'jobcard', label: '4. Job Card', icon: CalendarRange, stage: 'Stage 4' },
+    { id: 'enquiries', label: 'Job Enquiries', icon: Search },
+    { id: 'worksheet', label: 'Worksheet', icon: BookOpen, stage: 'Workshop' },
+    { id: 'reporting', label: 'Reporting', icon: BarChart3, stage: 'Analytics' },
+    { id: 'stores', label: 'Stores & Tool Stock', icon: Boxes, stage: 'Inventory' },
   ];
 
   // Only render menu items that the logged in user is authorized to access
@@ -475,26 +724,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* Current User Profile Summary */}
-        <div className="p-4 bg-slate-850 border-b border-slate-800 text-left flex items-center gap-3">
-          <div className="w-9 h-9 bg-slate-700 rounded-full flex items-center justify-center text-slate-200 font-extrabold text-sm uppercase shrink-0">
-            {userProfile.displayName ? userProfile.displayName[0] : userProfile.email[0]}
-          </div>
-          <div className="truncate flex-1">
-            <p className="text-xs font-bold text-slate-200 truncate">{userProfile.displayName || 'Operator'}</p>
-            <p className="text-[10px] text-slate-400 font-mono truncate">{userProfile.email}</p>
-            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-              <span className="inline-block text-[9px] font-extrabold text-blue-400 bg-blue-900/40 border border-blue-800 px-1.5 py-0.5 rounded-sm uppercase tracking-wide">
-                {userProfile.permissions.isAdmin ? 'Administrator' : 'Operator'}
-              </span>
-              <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/80 px-1.5 py-0.5 rounded-sm" title="Real-time automatic sync enabled">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Live Sync
-              </span>
-            </div>
-          </div>
-        </div>
-
         {/* Navigation Sidebar List */}
         <nav className="flex-1 p-3 md:p-4 space-y-1 overflow-y-auto text-left">
           {visibleNavItems.map((item) => {
@@ -550,167 +779,209 @@ export default function App() {
         </div>
       </aside>
 
-      {/* MAIN ERP WORKPLACE AREA */}
-      <main className="flex-1 p-3 sm:p-5 lg:p-8 overflow-y-auto w-full h-full">
-        {dataLoading && (
-          <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 py-1.5 px-4 rounded-full w-fit flex items-center gap-2 mb-4">
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            Syncing database records with MES Workshop7...
-          </div>
-        )}
+      {/* RIGHT MAIN WORKPLACE COLUMN (Top Banner + Content View) */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden w-full" id="main-workplace-container">
+        {/* TOP BANNER: Logged in User + Role-Based Notification Bell & Center + Company Group Chat Button */}
+        <TopUserBanner
+          currentUser={userProfile}
+          notifications={notifications}
+          chatMessages={chatMessages}
+          unreadChatCount={unreadChatCount}
+          onDismissNotification={handleDismissNotification}
+          onDismissAllNotifications={handleDismissAllNotifications}
+          onNavigateToJob={handleNavigateFromNotification}
+          onOpenChat={() => {
+            setIsChatOpen(true);
+            const now = Date.now();
+            setLastReadChatTimestamp(now);
+            if (userProfile?.uid) {
+              try {
+                localStorage.setItem(`workshop_chat_last_read_${userProfile.uid}`, now.toString());
+              } catch {}
+            }
+          }}
+          onSignOut={handleSignOut}
+          onForceSync={loadAllERPData}
+          isSyncing={dataLoading}
+          activeTab={activeTab}
+        />
 
-        {/* 1. If tab is Gated and user lacks permission: Render Access Restricted warning */}
-        {!hasAccess(activeTab) ? (
-          <div className="bg-white rounded-2xl border-2 border-red-200 shadow-md p-12 text-center max-w-xl mx-auto mt-12 text-left">
-            <div className="bg-red-50 text-red-600 p-4 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-5 border border-red-100 shadow-sm">
-              <ShieldAlert className="w-8 h-8" />
+        {/* SCROLLABLE MAIN VIEW AREA */}
+        <main className="flex-1 p-3 sm:p-5 lg:p-7 overflow-y-auto w-full">
+          {dataLoading && (
+            <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 py-1.5 px-4 rounded-full w-fit flex items-center gap-2 mb-4">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              Syncing database records with MES Workshop...
             </div>
-            <h2 className="text-xl font-bold text-slate-800 font-display text-center">ERP Clearance Restricted</h2>
-            <p className="text-slate-500 text-sm mt-3 leading-relaxed text-center">
-              You are signed in as <strong>{userProfile.displayName || userProfile.email}</strong>, but your account lacks the authorized clearance flag required for this stage:
-            </p>
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mt-5 space-y-2 text-xs text-slate-600">
-              <p><strong>Attempted Stage Access:</strong> {activeTab.toUpperCase()}</p>
-              <p><strong>Required Permissions:</strong> Contact an Administrator to enable the <strong>'{activeTab}'</strong> toggle in the Admin Center.</p>
+          )}
+
+          {/* 1. If tab is Gated and user lacks permission: Render Access Restricted warning */}
+          {!hasAccess(activeTab) ? (
+            <div className="bg-white rounded-2xl border-2 border-red-200 shadow-md p-12 text-center max-w-xl mx-auto mt-12 text-left">
+              <div className="bg-red-50 text-red-600 p-4 rounded-full w-14 h-14 flex items-center justify-center mx-auto mb-5 border border-red-100 shadow-sm">
+                <ShieldAlert className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 font-display text-center">ERP Clearance Restricted</h2>
+              <p className="text-slate-500 text-sm mt-3 leading-relaxed text-center">
+                You are signed in as <strong>{userProfile.displayName || userProfile.email}</strong>, but your account lacks the authorized clearance flag required for this stage:
+              </p>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mt-5 space-y-2 text-xs text-slate-600">
+                <p><strong>Attempted Stage Access:</strong> {activeTab.toUpperCase()}</p>
+                <p><strong>Required Permissions:</strong> Contact an Administrator to enable the <strong>'{activeTab}'</strong> toggle in the Admin Center.</p>
+              </div>
+              <div className="mt-8 flex justify-center">
+                <button
+                  onClick={() => setActiveTab('dashboard')}
+                  className="bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
+                >
+                  Return to Dashboard
+                </button>
+              </div>
             </div>
-            <div className="mt-8 flex justify-center">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className="bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
-              >
-                Return to Dashboard
-              </button>
+          ) : (
+            /* 2. Otherwise: Render authorized views */
+            <div className="space-y-6">
+              {activeTab === 'dashboard' && (
+                <DashboardView 
+                  jobs={jobs} 
+                  machines={machines}
+                  currentUser={userProfile} 
+                  onSelectJob={handleSelectJobFromDashboard}
+                  onNavigateToStores={() => setActiveTab('stores')}
+                  onSaveMachine={handleSaveMachine}
+                />
+              )}
+
+              {activeTab === 'worksheet' && (
+                <WorksheetDashboardView
+                  jobs={jobs}
+                  machines={machines}
+                  customers={customers}
+                  componentsList={componentsList}
+                  currentUser={userProfile}
+                  onSaveMachine={handleSaveMachine}
+                  onSelectJob={(job) => {
+                    setSelectedJobContext(job);
+                    setActiveTab('enquiries');
+                  }}
+                />
+              )}
+
+              {activeTab === 'reporting' && (
+                <WorksheetReportsView
+                  jobs={jobs}
+                  machines={machines}
+                  customers={customers}
+                  componentsList={componentsList}
+                  currentUser={userProfile}
+                  onSelectJob={(job) => {
+                    setSelectedJobContext(job);
+                    setActiveTab('enquiries');
+                  }}
+                />
+              )}
+
+              {activeTab === 'stores' && (
+                <StoresDashboardView
+                  currentUser={userProfile}
+                  jobs={jobs}
+                  machines={machines}
+                />
+              )}
+
+              {activeTab === 'receiving' && (
+                <ReceivingView 
+                  customers={customers} 
+                  componentsList={componentsList} 
+                  customColumns={customColumns} 
+                  onSaveJobs={handleSaveJobs}
+                  currentUser={userProfile}
+                  existingJobs={jobs}
+                />
+              )}
+
+              {activeTab === 'inspection' && (
+                <InspectionView 
+                  jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
+                  onUpdateJob={handleUpdateJob}
+                  currentUser={userProfile}
+                  initialJob={selectedJobContext}
+                />
+              )}
+
+              {activeTab === 'quoting' && (
+                <PreQuoteView 
+                  jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
+                  componentsList={componentsList}
+                  onUpdateJob={handleUpdateJob}
+                  currentUser={userProfile}
+                  initialJob={selectedJobContext}
+                />
+              )}
+
+              {activeTab === 'jobcard' && (
+                <JobCardView 
+                  jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
+                  onUpdateJob={handleUpdateJob}
+                  currentUser={userProfile}
+                  jobCardFormat={jobCardFormat}
+                  initialJob={selectedJobContext}
+                />
+              )}
+
+              {(activeTab === 'enquiries' || activeTab === 'closing') && (
+                <JobEnquiriesView 
+                  jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
+                  customColumns={customColumns}
+                  componentsList={componentsList}
+                  onUpdateJob={handleUpdateJob}
+                  onDeleteJob={handleDeleteJob}
+                  onDeleteAllJobs={handleDeleteAllJobs}
+                  currentUser={userProfile}
+                  jobCardFormat={jobCardFormat}
+                />
+              )}
+
+              {activeTab === 'admin' && (
+                <AdminCenterView 
+                  users={usersList}
+                  customers={customers}
+                  machines={machines}
+                  jobs={jobs}
+                  componentsList={componentsList}
+                  customColumns={customColumns}
+                  jobCardFormat={jobCardFormat}
+                  onUpdateUserPermissions={handleUpdateUserPermissions}
+                  onSaveCustomColumns={handleSaveCustomColumns}
+                  onSaveCustomer={handleSaveCustomer}
+                  onDeleteCustomer={handleDeleteCustomer}
+                  onSaveMachine={handleSaveMachine}
+                  onDeleteMachine={handleDeleteMachine}
+                  onDeleteAllMachines={handleDeleteAllMachines}
+                  onSaveComponentMatrix={handleSaveComponentMatrix}
+                  onDeleteComponentMatrix={handleDeleteComponentMatrix}
+                  onSaveJobCardFormat={handleSaveJobCardFormat}
+                  onSelectJob={(job) => {
+                    setSelectedJobContext(job);
+                    setActiveTab('jobcard');
+                  }}
+                />
+              )}
             </div>
-          </div>
-        ) : (
-          /* 2. Otherwise: Render authorized views */
-          <div className="space-y-6">
-            {activeTab === 'dashboard' && (
-              <DashboardView 
-                jobs={jobs} 
-                machines={machines}
-                currentUser={userProfile} 
-                onSelectJob={handleSelectJobFromDashboard}
-                onNavigateToStores={() => setActiveTab('stores')}
-                onSaveMachine={handleSaveMachine}
-              />
-            )}
+          )}
+        </main>
+      </div>
 
-            {activeTab === 'worksheet' && (
-              <WorksheetDashboardView
-                jobs={jobs}
-                machines={machines}
-                customers={customers}
-                componentsList={componentsList}
-                currentUser={userProfile}
-                onSaveMachine={handleSaveMachine}
-                onSelectJob={(job) => {
-                  setSelectedJobContext(job);
-                  setActiveTab('enquiries');
-                }}
-              />
-            )}
-
-            {activeTab === 'reporting' && (
-              <WorksheetReportsView
-                jobs={jobs}
-                machines={machines}
-                customers={customers}
-                componentsList={componentsList}
-                currentUser={userProfile}
-                onSelectJob={(job) => {
-                  setSelectedJobContext(job);
-                  setActiveTab('enquiries');
-                }}
-              />
-            )}
-
-            {activeTab === 'stores' && (
-              <StoresDashboardView
-                currentUser={userProfile}
-                jobs={jobs}
-                machines={machines}
-              />
-            )}
-
-            {activeTab === 'receiving' && (
-              <ReceivingView 
-                customers={customers} 
-                componentsList={componentsList} 
-                customColumns={customColumns} 
-                onSaveJobs={handleSaveJobs}
-                currentUser={userProfile}
-                existingJobs={jobs}
-              />
-            )}
-
-            {activeTab === 'inspection' && (
-              <InspectionView 
-                jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
-                onUpdateJob={handleUpdateJob}
-                currentUser={userProfile}
-              />
-            )}
-
-            {activeTab === 'quoting' && (
-              <PreQuoteView 
-                jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
-                componentsList={componentsList}
-                onUpdateJob={handleUpdateJob}
-                currentUser={userProfile}
-              />
-            )}
-
-            {activeTab === 'jobcard' && (
-              <JobCardView 
-                jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
-                onUpdateJob={handleUpdateJob}
-                currentUser={userProfile}
-                jobCardFormat={jobCardFormat}
-              />
-            )}
-
-            {(activeTab === 'enquiries' || activeTab === 'closing') && (
-              <JobEnquiriesView 
-                jobs={selectedJobContext ? [selectedJobContext, ...jobs.filter(j => j.id !== selectedJobContext.id)] : jobs}
-                customColumns={customColumns}
-                componentsList={componentsList}
-                onUpdateJob={handleUpdateJob}
-                onDeleteJob={handleDeleteJob}
-                onDeleteAllJobs={handleDeleteAllJobs}
-                currentUser={userProfile}
-                jobCardFormat={jobCardFormat}
-              />
-            )}
-
-            {activeTab === 'admin' && (
-              <AdminCenterView 
-                users={usersList}
-                customers={customers}
-                machines={machines}
-                jobs={jobs}
-                componentsList={componentsList}
-                customColumns={customColumns}
-                jobCardFormat={jobCardFormat}
-                onUpdateUserPermissions={handleUpdateUserPermissions}
-                onSaveCustomColumns={handleSaveCustomColumns}
-                onSaveCustomer={handleSaveCustomer}
-                onDeleteCustomer={handleDeleteCustomer}
-                onSaveMachine={handleSaveMachine}
-                onDeleteMachine={handleDeleteMachine}
-                onDeleteAllMachines={handleDeleteAllMachines}
-                onSaveComponentMatrix={handleSaveComponentMatrix}
-                onDeleteComponentMatrix={handleDeleteComponentMatrix}
-                onSaveJobCardFormat={handleSaveJobCardFormat}
-                onSelectJob={(job) => {
-                  setSelectedJobContext(job);
-                  setActiveTab('jobcard');
-                }}
-              />
-            )}
-          </div>
-        )}
-      </main>
+      {/* COMPANY GROUP CHAT DRAWER */}
+      <CompanyChatDrawer
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        currentUser={userProfile}
+        messages={chatMessages}
+        onSendMessage={handleSendMessage}
+        onToggleReaction={handleToggleChatReaction}
+        allUsers={usersList}
+      />
     </div>
   );
 }

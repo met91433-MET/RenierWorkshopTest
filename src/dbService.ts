@@ -12,7 +12,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
-import { Customer, Machine, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, ToolStockItem, ConsumableItem, ConsumableAllocationLog, ToolLog, WorksheetEntry } from './types';
+import { Customer, Machine, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, ToolStockItem, ConsumableItem, ConsumableAllocationLog, ToolLog, WorksheetEntry, AppNotification, ChatMessage } from './types';
 import { sanitizeJobForFirestoreAsync, compressDataUrl } from './utils/imageCompressor';
 
 export enum OperationType {
@@ -888,6 +888,102 @@ export async function seedStoresDataIfEmpty(): Promise<void> {
         await setDoc(doc(db, 'tool_logs', tlog.id), tlog);
       }
     }
+
+    // Seed default notifications if empty
+    const notifsSnap = await getDocs(collection(db, 'notifications'));
+    if (notifsSnap.empty) {
+      const defaultNotifs: AppNotification[] = [
+        {
+          id: 'notif-seed-01',
+          title: 'Component Arrived for Inspection',
+          message: 'Job #C00001 (Hydraulic Cylinder) has been received and is waiting for technical inspection.',
+          type: 'job_received',
+          targetPermission: 'canInspect',
+          targetTab: 'inspection',
+          jobId: '1',
+          jobNo: 'C00001',
+          customerName: 'Anglo Platinum',
+          componentName: 'Hydraulic Cylinder',
+          createdAt: new Date(Date.now() - 25 * 60 * 1000).toISOString(),
+          createdByUid: 'system',
+          createdByName: 'Receiving Team',
+          readBy: [],
+          dismissedBy: [],
+          dismissedAt: {}
+        },
+        {
+          id: 'notif-seed-02',
+          title: 'Inspection Complete - Pre-Quote Needed',
+          message: 'Job #C00002 (Centrifugal Pump Casing) inspection finalized. Ready for Pre-Quote pricing.',
+          type: 'inspection_needed',
+          targetPermission: 'canQuote',
+          targetTab: 'quoting',
+          jobId: '2',
+          jobNo: 'C00002',
+          customerName: 'Sasol Synfuels',
+          componentName: 'Centrifugal Pump Casing',
+          createdAt: new Date(Date.now() - 65 * 60 * 1000).toISOString(),
+          createdByUid: 'system',
+          createdByName: 'Lead Inspector',
+          readBy: [],
+          dismissedBy: [],
+          dismissedAt: {}
+        },
+        {
+          id: 'notif-seed-03',
+          title: 'Pre-Quote Ready for Job Card Generation',
+          message: 'Job #C00003 (Planetary Gearbox) pre-quote approved. Ready for Job Card creation.',
+          type: 'quote_needed',
+          targetPermission: 'canCreateJobCard',
+          targetTab: 'jobcard',
+          jobId: '3',
+          jobNo: 'C00003',
+          customerName: 'Glencore Operations',
+          componentName: 'Planetary Gearbox',
+          createdAt: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
+          createdByUid: 'system',
+          createdByName: 'Estimating Team',
+          readBy: [],
+          dismissedBy: [],
+          dismissedAt: {}
+        }
+      ];
+
+      for (const n of defaultNotifs) {
+        await setDoc(doc(db, 'notifications', n.id), cleanForFirestore(n));
+      }
+    }
+
+    // Seed default chat messages if empty
+    const chatSnap = await getDocs(collection(db, 'chat_messages'));
+    if (chatSnap.empty) {
+      const defaultMessages: ChatMessage[] = [
+        {
+          id: 'msg-seed-01',
+          senderUid: 'system-admin',
+          senderName: 'Workshop Manager',
+          senderEmail: 'manager@workshop.com',
+          senderRole: 'Admin',
+          text: 'Welcome to the MES Workshop company channel! Team members can post real-time updates on jobs, component arrivals, and technical queries here.',
+          createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
+          reactions: { '👍': ['system-admin'], '🔧': ['system-admin'] }
+        },
+        {
+          id: 'msg-seed-02',
+          senderUid: 'system-stores',
+          senderName: 'Stores Department',
+          senderEmail: 'stores@workshop.com',
+          senderRole: 'Stores',
+          text: 'Notice: New batch of cutting fluids and 115mm grinding discs have been restocked in Bay 2.',
+          createdAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+          reactions: { '✅': ['system-stores'] }
+        }
+      ];
+
+      for (const msg of defaultMessages) {
+        await setDoc(doc(db, 'chat_messages', msg.id), cleanForFirestore(msg));
+      }
+    }
   } catch (err) {
     console.error("Error seeding stores data:", err);
   }
@@ -1115,6 +1211,190 @@ export function subscribeWorksheetEntries(onUpdate: (entries: WorksheetEntry[]) 
     handleFirestoreError(error, OperationType.GET, path);
   });
 }
+
+// ==========================================
+// 10. NOTIFICATIONS SERVICE
+// ==========================================
+
+export async function getNotifications(): Promise<AppNotification[]> {
+  try {
+    const snapshot = await getDocs(collection(db, 'notifications'));
+    const list: AppNotification[] = [];
+    snapshot.forEach(docSnap => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as AppNotification);
+    });
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'notifications');
+    return [];
+  }
+}
+
+export function subscribeNotifications(onUpdate: (notifications: AppNotification[]) => void): () => void {
+  const path = 'notifications';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: AppNotification[] = [];
+    snapshot.forEach(docSnap => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as AppNotification);
+    });
+    const sorted = list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    onUpdate(sorted);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export async function createNotification(notif: Partial<AppNotification> & { title: string; message: string }): Promise<string> {
+  const id = notif.id || `notif-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  const fullNotif: AppNotification = {
+    id,
+    title: notif.title,
+    message: notif.message,
+    type: notif.type || 'general',
+    targetPermission: notif.targetPermission || 'all',
+    jobId: notif.jobId,
+    jobNo: notif.jobNo,
+    customerName: notif.customerName,
+    componentName: notif.componentName,
+    targetTab: notif.targetTab,
+    createdAt: notif.createdAt || new Date().toISOString(),
+    createdByUid: notif.createdByUid || auth.currentUser?.uid || 'system',
+    createdByName: notif.createdByName || auth.currentUser?.displayName || auth.currentUser?.email || 'System',
+    readBy: notif.readBy || [],
+    dismissedBy: notif.dismissedBy || [],
+    dismissedAt: notif.dismissedAt || {}
+  };
+
+  try {
+    await setDoc(doc(db, 'notifications', id), cleanForFirestore(fullNotif));
+    return id;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `notifications/${id}`);
+    throw error;
+  }
+}
+
+export async function markNotificationDismissed(notificationId: string, uid: string): Promise<void> {
+  try {
+    const notifRef = doc(db, 'notifications', notificationId);
+    const snap = await getDoc(notifRef);
+    if (!snap.exists()) return;
+    const data = snap.data() as AppNotification;
+    const dismissedBy = Array.from(new Set([...(data.dismissedBy || []), uid]));
+    const dismissedAt = {
+      ...(data.dismissedAt || {}),
+      [uid]: new Date().toISOString()
+    };
+    const readBy = Array.from(new Set([...(data.readBy || []), uid]));
+
+    await updateDoc(notifRef, cleanForFirestore({
+      dismissedBy,
+      dismissedAt,
+      readBy
+    }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `notifications/${notificationId}`);
+  }
+}
+
+export async function markAllNotificationsDismissed(notificationIds: string[], uid: string): Promise<void> {
+  const now = new Date().toISOString();
+  for (const notifId of notificationIds) {
+    try {
+      const notifRef = doc(db, 'notifications', notifId);
+      const snap = await getDoc(notifRef);
+      if (snap.exists()) {
+        const data = snap.data() as AppNotification;
+        const dismissedBy = Array.from(new Set([...(data.dismissedBy || []), uid]));
+        const dismissedAt = { ...(data.dismissedAt || {}), [uid]: now };
+        const readBy = Array.from(new Set([...(data.readBy || []), uid]));
+        await updateDoc(notifRef, cleanForFirestore({ dismissedBy, dismissedAt, readBy }));
+      }
+    } catch (e) {
+      console.error(`Error dismissing notification ${notifId}:`, e);
+    }
+  }
+}
+
+export async function deleteNotification(notificationId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'notifications', notificationId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `notifications/${notificationId}`);
+  }
+}
+
+// ==========================================
+// 11. COMPANY GROUP CHAT SERVICE
+// ==========================================
+
+export async function getChatMessages(): Promise<ChatMessage[]> {
+  try {
+    const snapshot = await getDocs(collection(db, 'chat_messages'));
+    const list: ChatMessage[] = [];
+    snapshot.forEach(docSnap => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as ChatMessage);
+    });
+    return list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, 'chat_messages');
+    return [];
+  }
+}
+
+export function subscribeChatMessages(onUpdate: (messages: ChatMessage[]) => void): () => void {
+  const path = 'chat_messages';
+  return onSnapshot(collection(db, path), (snapshot) => {
+    const list: ChatMessage[] = [];
+    snapshot.forEach(docSnap => {
+      list.push({ id: docSnap.id, ...docSnap.data() } as ChatMessage);
+    });
+    const sorted = list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    onUpdate(sorted);
+  }, (error) => {
+    handleFirestoreError(error, OperationType.GET, path);
+  });
+}
+
+export async function sendChatMessage(msg: Omit<ChatMessage, 'id' | 'createdAt'>): Promise<void> {
+  const id = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  const fullMsg: ChatMessage = {
+    ...msg,
+    id,
+    createdAt: new Date().toISOString(),
+    reactions: {}
+  };
+
+  try {
+    await setDoc(doc(db, 'chat_messages', id), cleanForFirestore(fullMsg));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `chat_messages/${id}`);
+    throw error;
+  }
+}
+
+export async function toggleChatReaction(messageId: string, emoji: string, uid: string): Promise<void> {
+  try {
+    const msgRef = doc(db, 'chat_messages', messageId);
+    const snap = await getDoc(msgRef);
+    if (!snap.exists()) return;
+    const data = snap.data() as ChatMessage;
+    const reactions = { ...(data.reactions || {}) };
+    const currentUsers = reactions[emoji] || [];
+    if (currentUsers.includes(uid)) {
+      reactions[emoji] = currentUsers.filter(u => u !== uid);
+      if (reactions[emoji].length === 0) {
+        delete reactions[emoji];
+      }
+    } else {
+      reactions[emoji] = [...currentUsers, uid];
+    }
+    await updateDoc(msgRef, cleanForFirestore({ reactions }));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, `chat_messages/${messageId}`);
+  }
+}
+
 
 
 

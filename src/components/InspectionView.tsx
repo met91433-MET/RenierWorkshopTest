@@ -36,6 +36,7 @@ interface InspectionViewProps {
   jobs: Job[];
   onUpdateJob: (job: Job) => Promise<void>;
   currentUser: any;
+  initialJob?: Job | null;
 }
 
 type PhotoCategory = 'paperwork' | 'component' | 'inspection' | 'final_inspection' | 'delivery';
@@ -80,7 +81,8 @@ const getPhotoCategory = (file: JobFile): PhotoCategory => {
 export default function InspectionView({
   jobs,
   onUpdateJob,
-  currentUser
+  currentUser,
+  initialJob
 }: InspectionViewProps) {
   // Helper to determine Job sequence (e.g. Job 1 of 3)
   const getJobSequenceString = (job: Job, allJobs: Job[]): string => {
@@ -104,7 +106,14 @@ export default function InspectionView({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [uploadSearchTerm, setUploadSearchTerm] = useState('');
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(initialJob?.id || null);
+
+  // Sync initialJob if provided
+  useEffect(() => {
+    if (initialJob?.id) {
+      setSelectedJobId(initialJob.id);
+    }
+  }, [initialJob?.id]);
 
   // Derive selectedJob dynamically from `jobs` array so edits refresh instantly
   const selectedJob = jobs.find(j => j.id === selectedJobId) || null;

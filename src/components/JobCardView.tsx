@@ -20,13 +20,15 @@ interface JobCardViewProps {
   onUpdateJob: (job: Job) => Promise<void>;
   currentUser: any;
   jobCardFormat?: JobCardFormatConfig;
+  initialJob?: Job | null;
 }
 
 export default function JobCardView({
   jobs,
   onUpdateJob,
   currentUser,
-  jobCardFormat
+  jobCardFormat,
+  initialJob
 }: JobCardViewProps) {
   const format = jobCardFormat || DEFAULT_JOB_CARD_FORMAT;
   // Helper to determine Job sequence (e.g. Job 1 of 3)
@@ -46,7 +48,14 @@ export default function JobCardView({
   // Filter jobs waiting for job card creation
   const pendingJobs = jobs.filter(job => job.status === 'PreQuoted');
 
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(initialJob || null);
+
+  // Sync initialJob
+  useEffect(() => {
+    if (initialJob) {
+      setSelectedJob(initialJob);
+    }
+  }, [initialJob?.id]);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Helper to compute 1 month from received date

@@ -295,6 +295,47 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "pageNumber", "clockNumber", "jobDate", "jobNumber", "startTime", "endTime", "operation"]
+    },
+    "AppNotification": {
+      "title": "Application Notification",
+      "description": "Role-specific and general system alerts with interactive acknowledgement and dismissal tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "targetPermission": { "type": "string" },
+        "jobId": { "type": "string" },
+        "jobNo": { "type": "string" },
+        "customerName": { "type": "string" },
+        "componentName": { "type": "string" },
+        "targetTab": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdByUid": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "readBy": { "type": "array", "items": { "type": "string" } },
+        "dismissedBy": { "type": "array", "items": { "type": "string" } },
+        "dismissedAt": { "type": "object" }
+      },
+      "required": ["id", "title", "message", "createdAt"]
+    },
+    "ChatMessage": {
+      "title": "Company Group Chat Message",
+      "description": "Real-time communication message between workshop staff",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderEmail": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "text": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "reactions": { "type": "object" }
+      },
+      "required": ["id", "senderUid", "senderName", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -341,6 +382,14 @@
     "/worksheet_entries/{entryId}": {
       "schema": "WorksheetEntry",
       "description": "Captured daily machine worksheet and timesheet log entries"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "AppNotification",
+      "description": "Interactive workflow notifications and history logs"
+    },
+    "/chat_messages/{messageId}": {
+      "schema": "ChatMessage",
+      "description": "Company group chat messages"
     }
   }
 }
