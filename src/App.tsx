@@ -706,13 +706,13 @@ export default function App() {
         id="sidebar-panel"
       >
         {/* Sidebar Header / Logo */}
-        <div className="p-4 md:p-5 border-b border-slate-800 flex items-center justify-between md:justify-start gap-3">
+        <div className="p-4 md:p-5 border-b border-slate-800 flex items-center justify-between md:justify-start gap-3 h-[73px] min-h-[73px] shrink-0">
           <div className="flex items-center gap-3">
             <div className="bg-blue-600 text-white p-2 rounded-xl">
               <Wrench className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold tracking-tight font-display text-white">MES Workshop3</h2>
+              <h2 className="text-base font-bold tracking-tight font-display text-white leading-tight">MES Workshop3</h2>
               <p className="text-[10px] text-slate-400 font-medium">Repair Tracking ERP</p>
             </div>
           </div>

@@ -206,7 +206,7 @@ export default function TopUserBanner({
   const userInitial = (currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase();
 
   return (
-    <div className="w-full bg-slate-900 border-b border-slate-800 text-slate-200 px-3 sm:px-5 py-2.5 shadow-sm sticky top-0 z-30 flex items-center justify-between gap-3 shrink-0">
+    <div className="w-full bg-slate-900 border-b border-slate-800 text-slate-200 px-4 sm:px-6 h-[73px] min-h-[73px] shadow-sm sticky top-0 z-30 flex items-center justify-between gap-3 shrink-0">
       {/* LEFT: User Profile Info Pill */}
       <div className="flex items-center gap-3 min-w-0">
         <div className="relative">
@@ -247,7 +247,7 @@ export default function TopUserBanner({
         <div className="relative" ref={notifMenuRef}>
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
-            className={`relative p-2 sm:px-3 sm:py-1.5 rounded-xl border transition-all flex items-center gap-2 cursor-pointer ${
+            className={`relative p-2 sm:px-3.5 sm:py-2 rounded-xl border transition-all flex items-center gap-2 cursor-pointer h-9 sm:h-10 ${
               isNotifOpen || activeNotifs.length > 0
                 ? 'bg-slate-800 border-slate-700 text-white hover:bg-slate-750'
                 : 'bg-slate-850 border-slate-800 text-slate-300 hover:text-white hover:bg-slate-800'
@@ -487,10 +487,10 @@ export default function TopUserBanner({
         {/* 2. COMPANY GROUP CHAT BUTTON */}
         <button
           onClick={onOpenChat}
-          className={`relative px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer active:scale-95 ${
+          className={`relative px-3 sm:px-3.5 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer active:scale-95 h-9 sm:h-10 ${
             unreadChatCount > 0
               ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-blue-400/40 shadow-xs ring-2 ring-blue-400/30'
-              : 'bg-slate-800 hover:bg-slate-750 text-slate-200 border-slate-700 hover:border-slate-600'
+              : 'bg-slate-850 hover:bg-slate-800 text-slate-200 border-slate-700 hover:border-slate-600'
           }`}
           title={unreadChatCount > 0 ? `${unreadChatCount} unread message${unreadChatCount > 1 ? 's' : ''} in Company Chat` : 'Open Workshop Company Group Chat'}
         >
@@ -516,7 +516,7 @@ export default function TopUserBanner({
         <button
           onClick={onForceSync}
           disabled={isSyncing}
-          className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+          className="h-9 sm:h-10 w-9 sm:w-10 flex items-center justify-center text-slate-400 hover:text-white bg-slate-850 hover:bg-slate-800 border border-slate-750 hover:border-slate-700 rounded-xl transition-all cursor-pointer disabled:opacity-50"
           title="Sync with Cloud Database"
         >
           <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-blue-400' : ''}`} />
@@ -526,7 +526,7 @@ export default function TopUserBanner({
         <div className="relative" ref={profileMenuRef}>
           <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center gap-1.5 p-1 sm:px-2 py-1 bg-slate-800 hover:bg-slate-750 border border-slate-700 rounded-xl text-slate-200 transition-all cursor-pointer"
+            className="h-9 sm:h-10 flex items-center gap-1.5 px-2 sm:px-2.5 bg-slate-850 hover:bg-slate-800 border border-slate-750 hover:border-slate-700 rounded-xl text-slate-200 transition-all cursor-pointer"
           >
             <div className="w-6 h-6 rounded-lg bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center">
               {userInitial}
