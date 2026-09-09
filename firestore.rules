@@ -20,7 +20,7 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAuthenticated();
     }
 
     match /customers/{customerId} {

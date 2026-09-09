@@ -374,59 +374,6 @@ export default function DashboardView({
           transition={{ duration: 0.2 }}
           className="space-y-6"
         >
-          {/* Receiving Metrics Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Total Receiving */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Receiving Queue</span>
-                <Inbox className="w-4 h-4 text-amber-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-slate-800 font-display">{incomingJobs.length}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Pending Job Card</p>
-            </div>
-
-            {/* Stage 1: Received */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-blue-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">1. Received</span>
-                <Truck className="w-4 h-4 text-blue-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-blue-600 font-display">{incomingReceivedCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Awaiting Inspection</p>
-            </div>
-
-            {/* Stage 2: Inspected */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-amber-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">2. Inspected</span>
-                <Clipboard className="w-4 h-4 text-amber-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-amber-600 font-display">{incomingQCCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Awaiting Pre-Quote</p>
-            </div>
-
-            {/* Stage 3: Pre-Quoted */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-purple-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">3. Pre-Quoted</span>
-                <DollarSign className="w-4 h-4 text-purple-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-purple-600 font-display">{incomingQuotedCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Ready for Job Card</p>
-            </div>
-
-            {/* Ready to Issue */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-emerald-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Ready for Card</span>
-                <PackageCheck className="w-4 h-4 text-emerald-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-emerald-600 font-display">{readyForJobCardCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Pre-Quote Complete</p>
-            </div>
-          </div>
-
           {/* Receiving Workflow Breakdown Card */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h2 className="text-base font-bold tracking-tight text-slate-800 mb-4 flex items-center gap-2 font-display">
@@ -488,59 +435,6 @@ export default function DashboardView({
           transition={{ duration: 0.2 }}
           className="space-y-6"
         >
-          {/* Jobs Dashboard Metrics Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Active Cards */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Active Job Cards</span>
-                <FileText className="w-4 h-4 text-emerald-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-slate-800 font-display">{activeJobCardsCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Issued & In Workshop</p>
-            </div>
-
-            {/* Total Quoted Value */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-emerald-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Active Value</span>
-                <DollarSign className="w-4 h-4 text-emerald-500" />
-              </div>
-              <p className="text-2xl font-extrabold text-emerald-700 font-display truncate">{formatCurrency(totalQuotedValue)}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Total Active Quoted Value</p>
-            </div>
-
-            {/* Assigned Technicians */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-blue-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Assigned Techs</span>
-                <UserCheck className="w-4 h-4 text-blue-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-blue-600 font-display">{assignedTechCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Active Floor Technicians</p>
-            </div>
-
-            {/* Total Cards Created */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-purple-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Total Cards Issued</span>
-                <Tag className="w-4 h-4 text-purple-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-purple-600 font-display">{jobCardJobs.length}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Total Lifetime Cards</p>
-            </div>
-
-            {/* Completed / Closed */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-slate-600 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Closed Cards</span>
-                <ShieldCheck className="w-4 h-4 text-slate-600" />
-              </div>
-              <p className="text-3xl font-extrabold text-slate-700 font-display">{closedJobCardsCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Repairs Completed</p>
-            </div>
-          </div>
-
           {/* Job Card Workflow Breakdown Card */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h2 className="text-base font-bold tracking-tight text-slate-800 mb-4 flex items-center gap-2 font-display">
@@ -602,49 +496,6 @@ export default function DashboardView({
           transition={{ duration: 0.2 }}
           className="space-y-6"
         >
-          {/* PreQuote Dashboard Metrics Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Total Pre-Quoted Components */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-slate-300 transition-all border-l-4 border-l-purple-500">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Pre-Quoted Components</span>
-                <Calculator className="w-4 h-4 text-purple-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-slate-800 font-display">{totalPreQuoteCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Unique PQ Estimations</p>
-            </div>
-
-            {/* Total Pre-Quote Value */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-emerald-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Total Quoted Value</span>
-                <DollarSign className="w-4 h-4 text-emerald-500" />
-              </div>
-              <p className="text-2xl font-extrabold text-emerald-700 font-display truncate">{formatCurrency(totalPreQuoteValue)}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Combined Estimated Cost</p>
-            </div>
-
-            {/* Average Quote Value */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-blue-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Average Quote Value</span>
-                <Tag className="w-4 h-4 text-blue-500" />
-              </div>
-              <p className="text-2xl font-extrabold text-blue-700 font-display truncate">{formatCurrency(avgPreQuoteValue)}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Per Component Avg</p>
-            </div>
-
-            {/* Active Quoter Technicians */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm border-l-4 border-l-amber-500 hover:border-slate-300 transition-all">
-              <div className="flex items-center justify-between text-slate-400 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Quoting Estimators</span>
-                <UserCheck className="w-4 h-4 text-amber-500" />
-              </div>
-              <p className="text-3xl font-extrabold text-amber-600 font-display">{uniqueQuotersCount}</p>
-              <p className="text-[11px] text-slate-400 mt-1">Active Estimator Accounts</p>
-            </div>
-          </div>
-
           {/* PreQuote Workflow Breakdown Card */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h2 className="text-base font-bold tracking-tight text-slate-800 mb-4 flex items-center gap-2 font-display">

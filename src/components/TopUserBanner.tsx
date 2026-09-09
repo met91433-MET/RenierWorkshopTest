@@ -3,7 +3,8 @@ import {
   UserProfile, 
   AppNotification, 
   ChatMessage, 
-  UserPermissions 
+  UserPermissions,
+  Job 
 } from '../types';
 import { 
   Bell, 
@@ -25,13 +26,146 @@ import {
   Layers,
   Wrench,
   AlertCircle,
-  X
+  AlertTriangle,
+  Lock,
+  X,
+  KeyRound,
+  Eye,
+  EyeOff,
+  ShieldCheck
 } from 'lucide-react';
+import { auth } from '../firebase';
+import { updatePassword } from 'firebase/auth';
+
+export interface NotifProcessCheck {
+  isCompleted: boolean;
+  requiredStageName: string;
+  targetTab: string;
+  reason: string;
+  currentStatusLabel: string;
+  jobFound?: Job;
+}
+
+export function checkNotificationProcess(notif: AppNotification, jobs: Job[] = []): NotifProcessCheck {
+  if (!notif.jobId) {
+    return {
+      isCompleted: true,
+      requiredStageName: '',
+      targetTab: notif.targetTab || 'dashboard',
+      reason: '',
+      currentStatusLabel: 'General'
+    };
+  }
+
+  // Look for matching job by id, delivery note number, or job card number
+  const job = jobs.find(j => 
+    j.id === notif.jobId || 
+    j.deliveryNoteNumber === notif.jobId ||
+    j.jobCardDetails?.jobCardNumber === notif.jobId || 
+    (notif.jobNo && (j.id === notif.jobNo || j.deliveryNoteNumber === notif.jobNo || j.jobCardDetails?.jobCardNumber === notif.jobNo))
+  );
+
+  if (!job) {
+    // If job does not exist in active records, allow dismissal
+    return {
+      isCompleted: true,
+      requiredStageName: '',
+      targetTab: notif.targetTab || 'dashboard',
+      reason: '',
+      currentStatusLabel: 'Archived/Deleted'
+    };
+  }
+
+  const currentStatus = job.status || 'Received';
+
+  // 1. Stage: Technical Inspection (triggered on arrival/receiving)
+  if (notif.type === 'job_received' || notif.targetPermission === 'canInspect' || notif.targetTab === 'inspection') {
+    const isInspected = currentStatus !== 'Received' || Boolean(
+      job.inspectionDetails?.inspectorName ||
+      job.inspectionDetails?.inspectedAt ||
+      (job.inspectionDetails?.findings && job.inspectionDetails.findings.trim() !== '')
+    );
+
+    return {
+      isCompleted: isInspected,
+      requiredStageName: 'Technical Inspection',
+      targetTab: 'inspection',
+      reason: isInspected
+        ? 'Technical Inspection has been completed.'
+        : `Job #${notif.jobNo || job.id} is currently in "${currentStatus}" status. The Technical Inspection must be completed in the Inspection desk before checking off this alert.`,
+      currentStatusLabel: currentStatus,
+      jobFound: job
+    };
+  }
+
+  // 2. Stage: Pre-Quote (triggered when inspection is done)
+  if (notif.type === 'inspection_needed' || notif.targetPermission === 'canQuote' || notif.targetTab === 'quoting') {
+    const isPreQuoted = (currentStatus === 'PreQuoted' || currentStatus === 'JobCardCreated' || currentStatus === 'Closed') ||
+      Boolean(
+        job.preQuoteDetails?.preQuoteId ||
+        (job.preQuoteDetails?.steps && job.preQuoteDetails.steps.length > 0) ||
+        (job.preQuoteDetails?.totalCost && job.preQuoteDetails.totalCost > 0)
+      );
+
+    return {
+      isCompleted: isPreQuoted,
+      requiredStageName: 'Pre-Quote Calculation',
+      targetTab: 'quoting',
+      reason: isPreQuoted
+        ? 'Pre-Quote calculation has been completed.'
+        : `Job #${notif.jobNo || job.id} is currently in "${currentStatus}" status. The Pre-Quote calculation must be completed in the Pre-Quote desk before checking off this alert.`,
+      currentStatusLabel: currentStatus,
+      jobFound: job
+    };
+  }
+
+  // 3. Stage: Job Card Creation (triggered when pre-quote is completed)
+  if (notif.type === 'quote_needed' || notif.targetPermission === 'canCreateJobCard' || notif.targetTab === 'jobcard') {
+    const isJobCardCreated = currentStatus === 'JobCardCreated' || currentStatus === 'Closed' ||
+      Boolean(job.jobCardDetails?.jobCardNumber && job.jobCardDetails.jobCardNumber.trim() !== '');
+
+    return {
+      isCompleted: isJobCardCreated,
+      requiredStageName: 'Job Card Creation',
+      targetTab: 'jobcard',
+      reason: isJobCardCreated
+        ? 'Job Card has been created.'
+        : `Job #${notif.jobNo || job.id} is currently in "${currentStatus}" status. The Job Card must be generated in the Job Card Creator before checking off this alert.`,
+      currentStatusLabel: currentStatus,
+      jobFound: job
+    };
+  }
+
+  // 4. Stage: Active Workshop / Worksheet
+  if (notif.type === 'job_card_ready' || notif.targetPermission === 'canWorksheet' || notif.targetTab === 'worksheet') {
+    const isClosed = currentStatus === 'Closed';
+    return {
+      isCompleted: isClosed,
+      requiredStageName: 'Workshop QC Sign-Off & Job Close',
+      targetTab: 'worksheet',
+      reason: isClosed
+        ? 'Job has completed all workshop procedures.'
+        : `Job Card #${notif.jobNo || job.id} is active in production. Finalize timesheets and close out the job to complete this workflow.`,
+      currentStatusLabel: currentStatus,
+      jobFound: job
+    };
+  }
+
+  return {
+    isCompleted: true,
+    requiredStageName: '',
+    targetTab: notif.targetTab || 'dashboard',
+    reason: '',
+    currentStatusLabel: currentStatus,
+    jobFound: job
+  };
+}
 
 interface TopUserBannerProps {
   currentUser: UserProfile;
   notifications: AppNotification[];
   chatMessages: ChatMessage[];
+  jobs?: Job[];
   unreadChatCount?: number;
   onDismissNotification: (notificationId: string) => Promise<void>;
   onDismissAllNotifications: (notificationIds: string[]) => Promise<void>;
@@ -47,6 +181,7 @@ export default function TopUserBanner({
   currentUser,
   notifications,
   chatMessages,
+  jobs = [],
   unreadChatCount = 0,
   onDismissNotification,
   onDismissAllNotifications,
@@ -62,6 +197,57 @@ export default function TopUserBanner({
   const [notifTab, setNotifTab] = useState<'active' | 'history'>('active');
   const [notifFilter, setNotifFilter] = useState<'all' | 'inspection' | 'quote' | 'jobcard' | 'stores' | 'worksheet'>('all');
   const [tickingId, setTickingId] = useState<string | null>(null);
+  const [blockedAlertId, setBlockedAlertId] = useState<string | null>(null);
+  const [globalBannerMessage, setGlobalBannerMessage] = useState<string | null>(null);
+
+  // Change Password state
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
+  const [passwordUpdateError, setPasswordUpdateError] = useState('');
+  const [passwordUpdateSuccess, setPasswordUpdateSuccess] = useState('');
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordUpdateError('');
+    setPasswordUpdateSuccess('');
+
+    if (newPassword.length < 6) {
+      setPasswordUpdateError('Password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordUpdateError('Passwords do not match.');
+      return;
+    }
+
+    if (!auth.currentUser) {
+      setPasswordUpdateError('No active authentication session.');
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      await updatePassword(auth.currentUser, newPassword);
+      setPasswordUpdateSuccess('Your password has been updated and saved successfully.');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setTimeout(() => {
+        setIsChangePasswordOpen(false);
+        setPasswordUpdateSuccess('');
+      }, 2000);
+    } catch (err: any) {
+      if (err.code === 'auth/requires-recent-login') {
+        setPasswordUpdateError('For security, please sign out and sign back in before changing your password.');
+      } else {
+        setPasswordUpdateError(err.message || 'Failed to update password.');
+      }
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
 
   const notifMenuRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -119,20 +305,44 @@ export default function TopUserBanner({
     return true;
   });
 
-  const handleTickNotification = async (e: React.MouseEvent, notifId: string) => {
+  const readyToDismissCount = filteredActiveNotifs.filter(n => checkNotificationProcess(n, jobs).isCompleted).length;
+
+  const handleTickNotification = async (e: React.MouseEvent, notif: AppNotification) => {
     e.stopPropagation();
-    setTickingId(notifId);
+    const check = checkNotificationProcess(notif, jobs);
+    
+    if (!check.isCompleted) {
+      setBlockedAlertId(prev => prev === notif.id ? null : notif.id);
+      setGlobalBannerMessage(null);
+      return;
+    }
+
+    setBlockedAlertId(null);
+    setTickingId(notif.id);
     try {
-      await onDismissNotification(notifId);
+      await onDismissNotification(notif.id);
     } finally {
       setTimeout(() => setTickingId(null), 300);
     }
   };
 
   const handleDismissAll = async () => {
-    const ids = activeNotifs.map(n => n.id);
-    if (ids.length === 0) return;
+    const dismissableNotifs = activeNotifs.filter(n => checkNotificationProcess(n, jobs).isCompleted);
+    const incompleteCount = activeNotifs.length - dismissableNotifs.length;
+
+    if (dismissableNotifs.length === 0) {
+      setGlobalBannerMessage('Cannot clear alerts: All active tasks are still waiting for their respective workflow processes to be completed.');
+      return;
+    }
+
+    const ids = dismissableNotifs.map(n => n.id);
     await onDismissAllNotifications(ids);
+
+    if (incompleteCount > 0) {
+      setGlobalBannerMessage(`Cleared ${dismissableNotifs.length} completed task${dismissableNotifs.length > 1 ? 's' : ''}. ${incompleteCount} task${incompleteCount > 1 ? 's are' : ' is'} still pending required workflow completion.`);
+    } else {
+      setGlobalBannerMessage(null);
+    }
   };
 
   const handleNotifClick = (notif: AppNotification) => {
@@ -289,19 +499,47 @@ export default function TopUserBanner({
                 {activeNotifs.length > 0 && notifTab === 'active' && (
                   <button
                     onClick={handleDismissAll}
-                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
-                    title="Acknowledge all notifications"
+                    className={`text-[10px] font-bold px-2 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer ${
+                      readyToDismissCount > 0
+                        ? 'text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200'
+                        : 'text-slate-400 bg-slate-100 border border-slate-200 hover:bg-slate-200'
+                    }`}
+                    title={
+                      readyToDismissCount > 0
+                        ? `Acknowledge ${readyToDismissCount} completed task${readyToDismissCount > 1 ? 's' : ''}`
+                        : 'All active alerts have pending workflow steps that must be finished first'
+                    }
                   >
                     <CheckCheck className="w-3 h-3" />
-                    Tick All Done
+                    {readyToDismissCount > 0 ? `Tick Ready (${readyToDismissCount})` : 'Tick All Done'}
                   </button>
                 )}
               </div>
 
+              {/* Global Banner Notice (e.g. Incomplete alert notification) */}
+              {globalBannerMessage && (
+                <div className="p-2.5 bg-amber-50 border-b border-amber-200 text-amber-900 text-xs flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-tight font-medium">{globalBannerMessage}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setGlobalBannerMessage(null)}
+                    className="text-amber-500 hover:text-amber-800 p-0.5 rounded cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
+
               {/* Tabs: Active vs History */}
               <div className="flex border-b border-slate-200 bg-slate-100/60 p-1 text-xs">
                 <button
-                  onClick={() => setNotifTab('active')}
+                  onClick={() => {
+                    setNotifTab('active');
+                    setGlobalBannerMessage(null);
+                  }}
                   className={`flex-1 py-1.5 px-3 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     notifTab === 'active'
                       ? 'bg-white text-blue-700 shadow-2xs'
@@ -312,7 +550,10 @@ export default function TopUserBanner({
                   Active Tasks ({activeNotifs.length})
                 </button>
                 <button
-                  onClick={() => setNotifTab('history')}
+                  onClick={() => {
+                    setNotifTab('history');
+                    setGlobalBannerMessage(null);
+                  }}
                   className={`flex-1 py-1.5 px-3 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     notifTab === 'history'
                       ? 'bg-white text-blue-700 shadow-2xs'
@@ -364,31 +605,60 @@ export default function TopUserBanner({
                     filteredActiveNotifs.map(notif => {
                       const badge = getNotifBadge(notif.type);
                       const isTicking = tickingId === notif.id;
+                      const processCheck = checkNotificationProcess(notif, jobs);
+                      const isBlocked = blockedAlertId === notif.id;
 
                       return (
                         <div
                           key={notif.id}
                           onClick={() => handleNotifClick(notif)}
                           className={`p-3 transition-colors flex items-start gap-2.5 cursor-pointer group ${
-                            isTicking ? 'bg-emerald-50/60 opacity-60' : 'hover:bg-blue-50/50'
+                            isTicking 
+                              ? 'bg-emerald-50/60 opacity-60' 
+                              : isBlocked 
+                                ? 'bg-amber-50/40 border-l-3 border-amber-500' 
+                                : 'hover:bg-blue-50/50'
                           }`}
                         >
                           {/* Tick / Mark as Done button */}
                           <button
                             type="button"
-                            onClick={(e) => handleTickNotification(e, notif.id)}
-                            className="mt-0.5 w-5 h-5 rounded-md border border-slate-300 hover:border-emerald-500 hover:bg-emerald-50 text-transparent hover:text-emerald-600 flex items-center justify-center transition-all shrink-0 cursor-pointer group/tick"
-                            title="Tick to acknowledge & move to History Log"
+                            onClick={(e) => handleTickNotification(e, notif)}
+                            className={`mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center transition-all shrink-0 cursor-pointer ${
+                              processCheck.isCompleted
+                                ? 'border-emerald-400 bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white shadow-2xs'
+                                : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            }`}
+                            title={
+                              processCheck.isCompleted
+                                ? 'Tick to acknowledge and archive this completed task'
+                                : `Process incomplete: ${processCheck.requiredStageName} must be completed before checking off`
+                            }
                           >
-                            <Check className="w-3.5 h-3.5 group-hover/tick:text-emerald-600 transition-colors" />
+                            {processCheck.isCompleted ? (
+                              <Check className="w-3.5 h-3.5" />
+                            ) : (
+                              <Lock className="w-3 h-3 text-amber-600" />
+                            )}
                           </button>
 
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-1.5">
+                            <div className="flex items-center justify-between gap-1.5 flex-wrap">
                               <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded-sm border ${badge.bg}`}>
                                 {badge.label}
                               </span>
-                              <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono shrink-0">
+
+                              {processCheck.isCompleted ? (
+                                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold px-1.5 py-0.2 rounded-sm flex items-center gap-1">
+                                  ✓ Completed
+                                </span>
+                              ) : (
+                                <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[9px] font-bold px-1.5 py-0.2 rounded-sm flex items-center gap-1">
+                                  ⏳ Pending {processCheck.requiredStageName}
+                                </span>
+                              )}
+
+                              <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono shrink-0 ml-auto">
                                 <Clock className="w-2.5 h-2.5" />
                                 {formatTimeAgo(notif.createdAt)}
                               </span>
@@ -417,6 +687,44 @@ export default function TopUserBanner({
                                 <span className="text-[10px] text-blue-600 font-bold ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                   Open <ArrowUpRight className="w-3 h-3" />
                                 </span>
+                              </div>
+                            )}
+
+                            {/* Incomplete Process Warning Banner if blocked */}
+                            {isBlocked && (
+                              <div className="mt-2.5 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-950 text-xs flex flex-col gap-2">
+                                <div className="flex items-start gap-2">
+                                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                  <div className="leading-snug">
+                                    <p className="font-bold text-amber-900">Process Incomplete</p>
+                                    <p className="text-[11px] text-amber-800 mt-0.5">{processCheck.reason}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 justify-end pt-1.5 border-t border-amber-200/70">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setBlockedAlertId(null);
+                                    }}
+                                    className="px-2 py-1 text-[10px] text-amber-800 hover:bg-amber-100 rounded transition-colors cursor-pointer"
+                                  >
+                                    Dismiss Notice
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (processCheck.targetTab) {
+                                        onNavigateToJob(processCheck.targetTab, notif.jobId);
+                                        setIsNotifOpen(false);
+                                      }
+                                    }}
+                                    className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] rounded flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                                  >
+                                    Open {processCheck.requiredStageName} <ArrowUpRight className="w-3 h-3" />
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -581,6 +889,20 @@ export default function TopUserBanner({
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
+                    setIsChangePasswordOpen(true);
+                    setPasswordUpdateError('');
+                    setPasswordUpdateSuccess('');
+                    setNewPassword('');
+                    setConfirmNewPassword('');
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-slate-400" />
+                  Change Password
+                </button>
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
                     onForceSync();
                   }}
                   className="w-full text-left px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
@@ -603,6 +925,109 @@ export default function TopUserBanner({
           )}
         </div>
       </div>
+
+      {/* Change Password Modal */}
+      {isChangePasswordOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 text-left animate-in fade-in-50 zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800 font-display">Change Password</h3>
+                  <p className="text-xs text-slate-500 font-mono">{currentUser.email}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsChangePasswordOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {passwordUpdateError && (
+              <div className="bg-red-50 text-red-800 border border-red-200 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{passwordUpdateError}</span>
+              </div>
+            )}
+
+            {passwordUpdateSuccess && (
+              <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>{passwordUpdateSuccess}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleChangePassword} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">New Password (Min 6 characters)</label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="pl-9 pr-10 py-2 w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:border-blue-500 focus:bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm New Password</label>
+                <div className="relative">
+                  <ShieldCheck className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    minLength={6}
+                    placeholder="Confirm new password"
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    className="pl-9 pr-4 py-2 w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl text-xs sm:text-sm focus:outline-hidden focus:border-blue-500 focus:bg-white"
+                  />
+                </div>
+                {newPassword && confirmNewPassword && (
+                  <p className={`text-[10px] font-bold mt-1 ${newPassword === confirmNewPassword ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {newPassword === confirmNewPassword ? '✓ Passwords match' : '✗ Passwords do not match'}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-150">
+                <button
+                  type="button"
+                  onClick={() => setIsChangePasswordOpen(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingPassword || (Boolean(newPassword) && Boolean(confirmNewPassword) && newPassword !== confirmNewPassword)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-55"
+                >
+                  {isUpdatingPassword ? 'Saving Password...' : 'Save Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

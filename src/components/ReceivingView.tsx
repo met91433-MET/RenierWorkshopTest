@@ -455,7 +455,7 @@ export default function ReceivingView({
                           Workshop Job Card Config (Optional)
                         </h4>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
                           {/* Order Number */}
                           <div>
                             <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 text-left">Order Number</label>

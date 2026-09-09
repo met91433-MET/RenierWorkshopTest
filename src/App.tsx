@@ -23,6 +23,10 @@ import {
   getCustomColumns, 
   getAllUsers, 
   getUserProfile,
+  deleteUserProfile,
+  resetAndSeedMetalogikUsers,
+  METALOGIK_DEFAULT_USERS,
+  getMetalogikDefaultPermissions,
   seedDatabaseIfEmpty,
   saveJob,
   saveCustomer,
@@ -150,49 +154,52 @@ export default function App() {
       setAuthLoading(true);
       if (firebaseUser) {
         setUser(firebaseUser);
-        // Run database seeding if this is the first ever run
+        // Run database seeding and Metalogik user sync
         await seedDatabaseIfEmpty();
+        
         // Load user profile permissions
         const profile = await getUserProfile(firebaseUser.uid);
+        const emailLower = (firebaseUser.email || '').toLowerCase().trim();
+        const matchedMetalogik = METALOGIK_DEFAULT_USERS.find(u => u.email.toLowerCase() === emailLower);
         
         if (profile) {
-          setUserProfile(profile);
+          if (matchedMetalogik) {
+            const updatedProfile: UserProfile = {
+              ...profile,
+              displayName: matchedMetalogik.name,
+              permissions: matchedMetalogik.perms
+            };
+            setUserProfile(updatedProfile);
+            saveUserProfile(updatedProfile).catch(console.error);
+          } else {
+            setUserProfile(profile);
+          }
         } else {
-          // If no profile exists yet in the database, check if we already have it in the state
-          // (which can happen during registration's onLoginSuccess).
-          setUserProfile((currentProfile) => {
-            if (currentProfile && currentProfile.uid === firebaseUser.uid) {
-              return currentProfile;
-            }
-            
-            // Otherwise, dynamically create a safe fallback profile in Firestore
-            const isEmailAdmin = firebaseUser.email?.toLowerCase().includes('admin') || false;
-            const defaultPerms: UserPermissions = {
-              canReceive: isEmailAdmin,
-              canInspect: isEmailAdmin,
-              canQuote: isEmailAdmin,
-              canCreateJobCard: isEmailAdmin,
-              canStores: isEmailAdmin,
-              canWorksheet: isEmailAdmin,
-              canReporting: isEmailAdmin,
-              canClose: isEmailAdmin,
-              isAdmin: isEmailAdmin
-            };
-            
-            const fallbackProfile: UserProfile = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Operator',
-              permissions: defaultPerms,
-              createdAt: new Date().toISOString()
-            };
-            
-            // Save to Firestore in background
-            saveUserProfile(fallbackProfile).catch(err => {
-              console.error("Error creating fallback profile:", err);
-            });
-            
-            return fallbackProfile;
+          // If no profile exists yet in the database for this auth UID
+          const perms: UserPermissions = matchedMetalogik?.perms || {
+            canReceive: false,
+            canInspect: false,
+            canQuote: false,
+            canCreateJobCard: false,
+            canStores: false,
+            canWorksheet: false,
+            canReporting: false,
+            canClose: false,
+            isAdmin: false
+          };
+          
+          const fallbackProfile: UserProfile = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            displayName: matchedMetalogik?.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Operator',
+            permissions: perms,
+            createdAt: new Date().toISOString()
+          };
+          
+          setUserProfile(fallbackProfile);
+          // Save to Firestore in background
+          saveUserProfile(fallbackProfile).catch(err => {
+            console.error("Error creating fallback profile:", err);
           });
         }
       } else {
@@ -580,6 +587,18 @@ export default function App() {
     await updateUserPermissions(uid, perms);
   };
 
+  const handleDeleteUser = async (uid: string) => {
+    await deleteUserProfile(uid);
+  };
+
+  const handleResetMetalogikUsers = async () => {
+    await resetAndSeedMetalogikUsers();
+  };
+
+  const handleSaveUser = async (profile: UserProfile) => {
+    await saveUserProfile(profile);
+  };
+
   const handleSaveJobCardFormat = async (config: JobCardFormatConfig) => {
     setJobCardFormat(config);
     await saveJobCardFormatConfig(config);
@@ -786,6 +805,7 @@ export default function App() {
           currentUser={userProfile}
           notifications={notifications}
           chatMessages={chatMessages}
+          jobs={jobs}
           unreadChatCount={unreadChatCount}
           onDismissNotification={handleDismissNotification}
           onDismissAllNotifications={handleDismissAllNotifications}
@@ -952,6 +972,9 @@ export default function App() {
                   customColumns={customColumns}
                   jobCardFormat={jobCardFormat}
                   onUpdateUserPermissions={handleUpdateUserPermissions}
+                  onDeleteUser={handleDeleteUser}
+                  onResetMetalogikUsers={handleResetMetalogikUsers}
+                  onSaveUser={handleSaveUser}
                   onSaveCustomColumns={handleSaveCustomColumns}
                   onSaveCustomer={handleSaveCustomer}
                   onDeleteCustomer={handleDeleteCustomer}

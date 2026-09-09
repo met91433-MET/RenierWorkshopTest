@@ -308,6 +308,187 @@ export async function deleteComponentMatrix(id: string): Promise<void> {
 // ==========================================
 // 4. USER PERMISSIONS AND PROFILE SERVICE
 // ==========================================
+
+export interface MetalogikUserConfig {
+  name: string;
+  email: string;
+  roleTitle: string;
+  roleBadge: string;
+  color: string;
+  perms: UserPermissions;
+}
+
+export const METALOGIK_DEFAULT_USERS: MetalogikUserConfig[] = [
+  {
+    name: 'Paulo',
+    email: 'paulo@metalogik.co.za',
+    roleTitle: 'Full Admin Access',
+    roleBadge: 'Admin',
+    color: 'bg-slate-800 hover:bg-slate-900 text-white',
+    perms: {
+      canReceive: true,
+      canInspect: true,
+      canQuote: true,
+      canCreateJobCard: true,
+      canStores: true,
+      canWorksheet: true,
+      canReporting: true,
+      canClose: true,
+      isAdmin: true
+    }
+  },
+  {
+    name: 'Renier',
+    email: 'renier@metalogik.co.za',
+    roleTitle: 'Full Admin Access',
+    roleBadge: 'Admin',
+    color: 'bg-slate-800 hover:bg-slate-900 text-white',
+    perms: {
+      canReceive: true,
+      canInspect: true,
+      canQuote: true,
+      canCreateJobCard: true,
+      canStores: true,
+      canWorksheet: true,
+      canReporting: true,
+      canClose: true,
+      isAdmin: true
+    }
+  },
+  {
+    name: 'Francisca',
+    email: 'reception@metalogik.co.za',
+    roleTitle: 'Job Admin',
+    roleBadge: 'Job Admin',
+    color: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+    perms: {
+      canReceive: true,
+      canInspect: false,
+      canQuote: false,
+      canCreateJobCard: true,
+      canStores: false,
+      canWorksheet: false,
+      canReporting: false,
+      canClose: true,
+      isAdmin: false
+    }
+  },
+  {
+    name: 'Natasha',
+    email: 'office@metalogi.co.za',
+    roleTitle: 'Worksheets',
+    roleBadge: 'Worksheets',
+    color: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+    perms: {
+      canReceive: false,
+      canInspect: false,
+      canQuote: false,
+      canCreateJobCard: false,
+      canStores: false,
+      canWorksheet: true,
+      canReporting: false,
+      canClose: false,
+      isAdmin: false
+    }
+  },
+  {
+    name: 'Diane',
+    email: 'metalogik@metalogik.co.za',
+    roleTitle: 'Admin Access',
+    roleBadge: 'Admin',
+    color: 'bg-blue-800 hover:bg-blue-900 text-white',
+    perms: {
+      canReceive: true,
+      canInspect: true,
+      canQuote: true,
+      canCreateJobCard: true,
+      canStores: true,
+      canWorksheet: true,
+      canReporting: true,
+      canClose: true,
+      isAdmin: true
+    }
+  },
+  {
+    name: 'Cyril',
+    email: 'stores@metalogik.co.za',
+    roleTitle: 'Stores',
+    roleBadge: 'Stores',
+    color: 'bg-cyan-600 hover:bg-cyan-700 text-white',
+    perms: {
+      canReceive: false,
+      canInspect: false,
+      canQuote: false,
+      canCreateJobCard: false,
+      canStores: true,
+      canWorksheet: false,
+      canReporting: false,
+      canClose: false,
+      isAdmin: false
+    }
+  },
+  {
+    name: 'Jaco',
+    email: 'jaco@metalogik.co.za',
+    roleTitle: 'Prequote',
+    roleBadge: 'Prequote',
+    color: 'bg-purple-600 hover:bg-purple-700 text-white',
+    perms: {
+      canReceive: false,
+      canInspect: false,
+      canQuote: true,
+      canCreateJobCard: false,
+      canStores: false,
+      canWorksheet: false,
+      canReporting: false,
+      canClose: false,
+      isAdmin: false
+    }
+  },
+  {
+    name: 'Christopher',
+    email: 'inspection@metalogik.co.za',
+    roleTitle: 'Inspection',
+    roleBadge: 'Inspection',
+    color: 'bg-amber-600 hover:bg-amber-700 text-white',
+    perms: {
+      canReceive: true,
+      canInspect: true,
+      canQuote: false,
+      canCreateJobCard: false,
+      canStores: false,
+      canWorksheet: false,
+      canReporting: false,
+      canClose: false,
+      isAdmin: false
+    }
+  },
+  {
+    name: 'Nick',
+    email: 'nick@metalogik.co.za',
+    roleTitle: 'Inspection',
+    roleBadge: 'Inspection',
+    color: 'bg-amber-600 hover:bg-amber-700 text-white',
+    perms: {
+      canReceive: true,
+      canInspect: true,
+      canQuote: false,
+      canCreateJobCard: false,
+      canStores: false,
+      canWorksheet: false,
+      canReporting: false,
+      canClose: false,
+      isAdmin: false
+    }
+  }
+];
+
+export function getMetalogikDefaultPermissions(email: string): UserPermissions | null {
+  const normalized = (email || '').toLowerCase().trim();
+  const matched = METALOGIK_DEFAULT_USERS.find(u => u.email.toLowerCase() === normalized);
+  return matched ? matched.perms : null;
+}
+
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   try {
     const userDoc = await getDoc(doc(db, 'users', uid));
@@ -339,8 +520,78 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
   await setDoc(doc(db, 'users', profile.uid), cleanForFirestore(profile));
 }
 
+export async function deleteUserProfile(uid: string): Promise<void> {
+  try {
+    await deleteDoc(doc(db, 'users', uid));
+  } catch (error) {
+    console.error(`Error deleting user profile ${uid}:`, error);
+    throw error;
+  }
+}
+
 export async function updateUserPermissions(uid: string, permissions: UserPermissions): Promise<void> {
   await updateDoc(doc(db, 'users', uid), cleanForFirestore({ permissions }));
+}
+
+/**
+ * Removes all non-Metalogik users from the Firestore users collection
+ * and seeds/updates the 9 official Metalogik users with their exact access levels.
+ */
+export async function resetAndSeedMetalogikUsers(): Promise<void> {
+  try {
+    if (!auth.currentUser) {
+      return;
+    }
+    const snapshot = await getDocs(collection(db, 'users'));
+    const metalogikEmails = new Set(METALOGIK_DEFAULT_USERS.map(u => u.email.toLowerCase()));
+    
+    // 1. Delete all users who do not belong to the Metalogik roster
+    for (const d of snapshot.docs) {
+      const data = d.data() as UserProfile;
+      const userEmail = (data.email || '').toLowerCase().trim();
+      if (!metalogikEmails.has(userEmail)) {
+        console.log(`Removing non-metalogik user: ${data.displayName || userEmail} (${d.id})`);
+        await deleteDoc(doc(db, 'users', d.id));
+      }
+    }
+
+    // 2. Ensure each of the 9 Metalogik users has a corresponding document
+    const refreshedSnapshot = await getDocs(collection(db, 'users'));
+    const existingByEmail = new Map<string, UserProfile>();
+    refreshedSnapshot.forEach(d => {
+      const u = d.data() as UserProfile;
+      if (u.email) {
+        existingByEmail.set(u.email.toLowerCase().trim(), u);
+      }
+    });
+
+    for (const metalogikUser of METALOGIK_DEFAULT_USERS) {
+      const key = metalogikUser.email.toLowerCase().trim();
+      const existing = existingByEmail.get(key);
+      
+      if (existing) {
+        // Update permissions to match requested specification
+        await setDoc(doc(db, 'users', existing.uid), cleanForFirestore({
+          ...existing,
+          displayName: metalogikUser.name,
+          permissions: metalogikUser.perms
+        }), { merge: true });
+      } else {
+        // Create deterministic placeholder profile (will link upon authentication)
+        const placeholderUid = `metalogik-${metalogikUser.name.toLowerCase()}`;
+        const newProfile: UserProfile = {
+          uid: placeholderUid,
+          email: metalogikUser.email,
+          displayName: metalogikUser.name,
+          permissions: metalogikUser.perms,
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'users', placeholderUid), cleanForFirestore(newProfile));
+      }
+    }
+  } catch (error) {
+    console.error("Error resetting and seeding Metalogik users:", error);
+  }
 }
 
 // ==========================================
@@ -553,6 +804,9 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
     
     // Seed Stores Data if empty
     await seedStoresDataIfEmpty();
+
+    // 5. Reset and sync official Metalogik team users
+    await resetAndSeedMetalogikUsers();
   } catch (error) {
     console.error("Error seeding database:", error);
   }

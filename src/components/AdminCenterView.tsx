@@ -73,6 +73,9 @@ interface AdminCenterViewProps {
   customColumns: CustomColumn[];
   jobCardFormat?: JobCardFormatConfig;
   onUpdateUserPermissions: (uid: string, permissions: UserPermissions) => Promise<void>;
+  onDeleteUser?: (uid: string) => Promise<void>;
+  onResetMetalogikUsers?: () => Promise<void>;
+  onSaveUser?: (user: UserProfile) => Promise<void>;
   onSaveCustomColumns: (columns: CustomColumn[]) => Promise<void>;
   onSaveCustomer: (customer: Customer) => Promise<void>;
   onDeleteCustomer: (id: string) => Promise<void>;
@@ -94,6 +97,9 @@ export default function AdminCenterView({
   customColumns,
   jobCardFormat,
   onUpdateUserPermissions,
+  onDeleteUser,
+  onResetMetalogikUsers,
+  onSaveUser,
   onSaveCustomColumns,
   onSaveCustomer,
   onDeleteCustomer,
@@ -112,6 +118,123 @@ export default function AdminCenterView({
   // ========================================================
   const [editingUserUid, setEditingUserUid] = useState<string | null>(null);
   const [tempPermissions, setTempPermissions] = useState<UserPermissions | null>(null);
+  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  const [isResettingUsers, setIsResettingUsers] = useState(false);
+
+  // New user form state
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserRolePreset, setNewUserRolePreset] = useState<string>('custom');
+  const [newUserPerms, setNewUserPerms] = useState<UserPermissions>({
+    canReceive: false,
+    canInspect: false,
+    canQuote: false,
+    canCreateJobCard: false,
+    canStores: false,
+    canWorksheet: false,
+    canReporting: false,
+    canClose: false,
+    isAdmin: false
+  });
+
+  const handleApplyRolePreset = (preset: string) => {
+    setNewUserRolePreset(preset);
+    if (preset === 'admin') {
+      setNewUserPerms({
+        canReceive: true, canInspect: true, canQuote: true, canCreateJobCard: true,
+        canStores: true, canWorksheet: true, canReporting: true, canClose: true, isAdmin: true
+      });
+    } else if (preset === 'jobadmin') {
+      setNewUserPerms({
+        canReceive: true, canInspect: false, canQuote: false, canCreateJobCard: true,
+        canStores: false, canWorksheet: false, canReporting: false, canClose: true, isAdmin: false
+      });
+    } else if (preset === 'worksheets') {
+      setNewUserPerms({
+        canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: false,
+        canStores: false, canWorksheet: true, canReporting: false, canClose: false, isAdmin: false
+      });
+    } else if (preset === 'stores') {
+      setNewUserPerms({
+        canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: false,
+        canStores: true, canWorksheet: false, canReporting: false, canClose: false, isAdmin: false
+      });
+    } else if (preset === 'prequote') {
+      setNewUserPerms({
+        canReceive: false, canInspect: false, canQuote: true, canCreateJobCard: false,
+        canStores: false, canWorksheet: false, canReporting: false, canClose: false, isAdmin: false
+      });
+    } else if (preset === 'inspection') {
+      setNewUserPerms({
+        canReceive: true, canInspect: true, canQuote: false, canCreateJobCard: false,
+        canStores: false, canWorksheet: false, canReporting: false, canClose: false, isAdmin: false
+      });
+    }
+  };
+
+  const handleCreateNewUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserName.trim() || !newUserEmail.trim()) {
+      alert("Please provide both name and email address.");
+      return;
+    }
+
+    const emailTrimmed = newUserEmail.trim().toLowerCase();
+    const existing = users.find(u => (u.email || '').toLowerCase() === emailTrimmed);
+    if (existing) {
+      alert("A user with this email address already exists in the system.");
+      return;
+    }
+
+    const newProfile: UserProfile = {
+      uid: `metalogik-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      email: emailTrimmed,
+      displayName: newUserName.trim(),
+      permissions: newUserPerms,
+      createdAt: new Date().toISOString()
+    };
+
+    if (onSaveUser) {
+      await onSaveUser(newProfile);
+    }
+    
+    setIsAddUserModalOpen(false);
+    setNewUserName('');
+    setNewUserEmail('');
+    setNewUserRolePreset('custom');
+    alert(`User account "${newUserName}" created successfully.`);
+  };
+
+  const handleConfirmDeleteUser = async () => {
+    if (!userToDelete || !onDeleteUser) return;
+    try {
+      await onDeleteUser(userToDelete.uid);
+      setUserToDelete(null);
+      alert(`User profile "${userToDelete.displayName || userToDelete.email}" deleted.`);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to delete user profile.");
+    }
+  };
+
+  const handleResetMetalogikUsersClick = async () => {
+    if (!window.confirm("Are you sure you want to purge non-Metalogik users and reset the 9 official Metalogik staff members?")) {
+      return;
+    }
+    setIsResettingUsers(true);
+    try {
+      if (onResetMetalogikUsers) {
+        await onResetMetalogikUsers();
+      }
+      alert("Metalogik staff team has been successfully reset and synchronized (9 users).");
+    } catch (e) {
+      console.error(e);
+      alert("Error resetting Metalogik users.");
+    } finally {
+      setIsResettingUsers(false);
+    }
+  };
 
   const startEditPermissions = (user: UserProfile) => {
     setEditingUserUid(user.uid);
@@ -1098,38 +1221,66 @@ export default function AdminCenterView({
       </div>
 
       {/* ========================================================
-          TAB 1: USER PERMISSIONS
+          TAB 1: USER PERMISSIONS & MANAGEMENT
           ======================================================== */}
       {activeSubTab === 'users' && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden text-left">
-          <div className="p-4 border-b border-slate-200 bg-slate-50/40 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="p-4 border-b border-slate-200 bg-slate-50/40 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-slate-800">Workshop Users & Feature Clearances</h2>
-                <span className="bg-slate-200 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                <h2 className="text-sm font-bold text-slate-800">Workshop Users &amp; Feature Clearances</h2>
+                <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-200">
                   {users.length} Users
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 mt-0.5">Toggle permission flags to grant or restrict access to specific workshop modules and administrative functions.</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Manage accounts, role assignments, and feature permissions for the Metalogik workshop team.
+              </p>
             </div>
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-2.5 py-1 focus-within:border-blue-500 shadow-2xs shrink-0">
-              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <input
-                type="text"
-                placeholder="Filter users..."
-                value={userSearchQuery}
-                onChange={(e) => setUserSearchQuery(e.target.value)}
-                className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-32 sm:w-40 font-medium text-slate-700 placeholder:text-slate-400"
-              />
-              {userSearchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setUserSearchQuery('')}
-                  className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Filter */}
+              <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-2.5 py-1 focus-within:border-blue-500 shadow-2xs">
+                <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Filter users..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  className="text-xs bg-transparent border-0 p-0 focus:ring-0 focus:outline-hidden w-28 sm:w-36 font-medium text-slate-700 placeholder:text-slate-400"
+                />
+                {userSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setUserSearchQuery('')}
+                    className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Reset Metalogik Users */}
+              <button
+                type="button"
+                onClick={handleResetMetalogikUsersClick}
+                disabled={isResettingUsers}
+                className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
+                title="Purge all other accounts and restore the 9 official Metalogik staff members"
+              >
+                <RotateCcw className={`w-3.5 h-3.5 ${isResettingUsers ? 'animate-spin' : ''}`} />
+                <span>Reset Metalogik Users</span>
+              </button>
+
+              {/* Add User */}
+              <button
+                type="button"
+                onClick={() => setIsAddUserModalOpen(true)}
+                className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-colors shadow-2xs cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add User</span>
+              </button>
             </div>
           </div>
 
@@ -1147,7 +1298,7 @@ export default function AdminCenterView({
                   <th className="py-2.5 px-1.5 text-center font-bold" title="Workshop Analytics & Reports">Reporting</th>
                   <th className="py-2.5 px-1.5 text-center font-bold" title="Job Card Search & Enquiries">Enquiries</th>
                   <th className="py-2.5 px-1.5 text-center font-bold" title="Full System Administrator Access">Admin</th>
-                  <th className="py-2.5 pr-4 pl-2 text-right font-bold">Action</th>
+                  <th className="py-2.5 pr-4 pl-2 text-right font-bold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1166,15 +1317,22 @@ export default function AdminCenterView({
                     >
                       {/* Operator Account Column */}
                       <td className="py-2.5 pl-4 pr-2">
-                        <div className="flex items-center gap-2 max-w-[200px]">
-                          <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-black text-[10px] flex items-center justify-center shrink-0">
+                        <div className="flex items-center gap-2 max-w-[220px]">
+                          <div className="w-7 h-7 rounded-full bg-slate-800 text-white font-black text-[10px] flex items-center justify-center shrink-0 shadow-2xs">
                             {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-semibold text-slate-800 text-xs truncate leading-tight">
-                              {user.displayName || 'Unnamed Operator'}
-                            </p>
-                            <p className="text-slate-400 font-mono text-[10px] truncate leading-tight">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-bold text-slate-800 text-xs truncate leading-tight">
+                                {user.displayName || 'Unnamed Operator'}
+                              </p>
+                              {user.permissions?.isAdmin && (
+                                <span className="bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.2 rounded uppercase shrink-0">
+                                  Admin
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-slate-400 font-mono text-[10px] truncate leading-tight mt-0.5">
                               {user.email}
                             </p>
                           </div>
@@ -1186,7 +1344,7 @@ export default function AdminCenterView({
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
-                          checked={perms.canReceive}
+                          checked={Boolean(perms.canReceive)}
                           onChange={() => handlePermissionToggle('canReceive')}
                           className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
@@ -1197,7 +1355,7 @@ export default function AdminCenterView({
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
-                          checked={perms.canInspect}
+                          checked={Boolean(perms.canInspect)}
                           onChange={() => handlePermissionToggle('canInspect')}
                           className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
@@ -1208,7 +1366,7 @@ export default function AdminCenterView({
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
-                          checked={perms.canQuote}
+                          checked={Boolean(perms.canQuote)}
                           onChange={() => handlePermissionToggle('canQuote')}
                           className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
@@ -1219,7 +1377,7 @@ export default function AdminCenterView({
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
-                          checked={perms.canCreateJobCard}
+                          checked={Boolean(perms.canCreateJobCard)}
                           onChange={() => handlePermissionToggle('canCreateJobCard')}
                           className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
@@ -1263,7 +1421,7 @@ export default function AdminCenterView({
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
-                          checked={perms.canClose}
+                          checked={Boolean(perms.canClose)}
                           onChange={() => handlePermissionToggle('canClose')}
                           className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
@@ -1274,7 +1432,7 @@ export default function AdminCenterView({
                         <input 
                           type="checkbox" 
                           disabled={!isEditing}
-                          checked={perms.isAdmin}
+                          checked={Boolean(perms.isAdmin)}
                           onChange={() => handlePermissionToggle('isAdmin')}
                           className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
                         />
@@ -1285,12 +1443,14 @@ export default function AdminCenterView({
                         {isEditing ? (
                           <div className="flex gap-1 justify-end">
                             <button
+                              type="button"
                               onClick={() => savePermissions(user.uid)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2 py-1 rounded-md text-[11px] shadow-2xs transition-colors cursor-pointer"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-md text-[11px] shadow-2xs transition-colors cursor-pointer"
                             >
                               Save
                             </button>
                             <button
+                              type="button"
                               onClick={() => { setEditingUserUid(null); setTempPermissions(null); }}
                               className="bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-semibold px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer"
                             >
@@ -1298,12 +1458,23 @@ export default function AdminCenterView({
                             </button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => startEditPermissions(user)}
-                            className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 font-bold px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer whitespace-nowrap"
-                          >
-                            Edit
-                          </button>
+                          <div className="flex gap-1 justify-end items-center">
+                            <button
+                              type="button"
+                              onClick={() => startEditPermissions(user)}
+                              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 font-bold px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer whitespace-nowrap"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setUserToDelete(user)}
+                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-md transition-colors cursor-pointer"
+                              title="Delete user profile"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -1312,6 +1483,168 @@ export default function AdminCenterView({
               </tbody>
             </table>
           </div>
+
+          {/* ADD USER MODAL */}
+          {isAddUserModalOpen && (
+            <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="w-5 h-5 text-blue-600" />
+                    <h3 className="text-base font-bold text-slate-800 font-display">Add Workshop User</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddUserModalOpen(false)}
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateNewUser} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Paulo"
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:outline-hidden focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. paulo@metalogik.co.za"
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:outline-hidden focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Role Preset Quick-Select</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[
+                        { id: 'admin', label: 'Full Admin' },
+                        { id: 'jobadmin', label: 'Job Admin' },
+                        { id: 'worksheets', label: 'Worksheets' },
+                        { id: 'stores', label: 'Stores' },
+                        { id: 'prequote', label: 'Prequote' },
+                        { id: 'inspection', label: 'Inspection' },
+                      ].map(preset => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => handleApplyRolePreset(preset.id)}
+                          className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                            newUserRolePreset === preset.id
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-2">Module Access Permissions</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      {[
+                        { key: 'canReceive', label: 'Receiving' },
+                        { key: 'canInspect', label: 'Inspection' },
+                        { key: 'canQuote', label: 'Pre-Quote' },
+                        { key: 'canCreateJobCard', label: 'Job Admin' },
+                        { key: 'canStores', label: 'Stores' },
+                        { key: 'canWorksheet', label: 'Worksheets' },
+                        { key: 'canReporting', label: 'Reporting' },
+                        { key: 'canClose', label: 'Enquiries & Close' },
+                        { key: 'isAdmin', label: 'Full Admin Access' },
+                      ].map(item => (
+                        <label key={item.key} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={Boolean((newUserPerms as any)[item.key])}
+                            onChange={() => {
+                              setNewUserRolePreset('custom');
+                              setNewUserPerms(prev => ({
+                                ...prev,
+                                [item.key]: !(prev as any)[item.key]
+                              }));
+                            }}
+                            className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300"
+                          />
+                          <span>{item.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-150">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddUserModalOpen(false)}
+                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                    >
+                      Create User
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* DELETE USER CONFIRMATION MODAL */}
+          {userToDelete && (
+            <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center gap-3 text-red-600">
+                  <div className="p-2.5 bg-red-100 rounded-xl">
+                    <Trash2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Delete User Account</h3>
+                    <p className="text-xs text-slate-500">This action cannot be undone.</p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                  <p className="text-xs font-bold text-slate-800">{userToDelete.displayName || 'Unnamed User'}</p>
+                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">{userToDelete.email}</p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setUserToDelete(null)}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDeleteUser}
+                    className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
+                  >
+                    Delete User
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2371,7 +2704,7 @@ export default function AdminCenterView({
                 <div className="p-4 space-y-3 text-xs">
                   {activeDocLayout === 'jobCard' ? (
                     <>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Order # Label</label>
                           <input
@@ -2392,7 +2725,7 @@ export default function AdminCenterView({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Customer Job # Label</label>
                           <input
@@ -2413,7 +2746,7 @@ export default function AdminCenterView({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Status / Tech Label</label>
                           <input
@@ -2434,7 +2767,7 @@ export default function AdminCenterView({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Consumables Title</label>
                           <input
@@ -2457,7 +2790,7 @@ export default function AdminCenterView({
                     </>
                   ) : (
                     <>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">PreQuote # Prefix/Label</label>
                           <input
@@ -2478,7 +2811,7 @@ export default function AdminCenterView({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Estimator Field Label</label>
                           <input
@@ -2499,7 +2832,7 @@ export default function AdminCenterView({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Repair Scope Col Header</label>
                           <input

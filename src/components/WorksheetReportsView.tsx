@@ -725,7 +725,7 @@ export default function WorksheetReportsView({
         </div>
 
         {/* Template Buttons Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 gap-2.5">
           {[
             {
               id: 'employee_labour',
