@@ -93,7 +93,9 @@ import {
   X,
   Boxes,
   BookOpen,
-  BarChart3
+  BarChart3,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 
 export default function App() {
@@ -144,6 +146,45 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showInactiveJobs, setShowInactiveJobs] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Left Sidebar Collapse State (persisted in localStorage for bigger screen experience)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('metalogik_sidebar_collapsed');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('metalogik_sidebar_collapsed', String(next));
+      } catch {}
+      // Rescale charts, data tables, and viewport listeners when transitioning
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 50);
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 320);
+      return next;
+    });
+  };
+
+  // Keyboard shortcut Ctrl+B or Cmd+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Shared Job context (when jumping from dashboard to inspection/quote, etc.)
   const [selectedJobContext, setSelectedJobContext] = useState<Job | null>(null);
@@ -717,34 +758,57 @@ export default function App() {
         />
       )}
 
-      {/* SIDEBAR NAVIGATION PANEL (Responsive slide-over on mobile, fixed on desktop) */}
+      {/* SIDEBAR NAVIGATION PANEL (Responsive slide-over on mobile, collapsible on desktop for bigger screen) */}
       <aside 
-        className={`fixed md:static inset-y-0 left-0 z-50 w-72 md:w-64 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-850 flex-shrink-0 h-full transform transition-transform duration-200 ease-in-out ${
+        className={`fixed md:static inset-y-0 left-0 z-50 w-72 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-850 shrink-0 h-full relative transition-all duration-300 ease-in-out ${
+          isSidebarCollapsed ? 'md:w-20' : 'md:w-64'
+        } ${
           isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`} 
         id="sidebar-panel"
       >
+        {/* SMALL ARROW BUTTON on the right border of the menu on the left */}
+        <button
+          onClick={toggleSidebar}
+          title={isSidebarCollapsed ? "Expand menu (Ctrl+B)" : "Collapse menu for bigger screen (Ctrl+B)"}
+          aria-label={isSidebarCollapsed ? "Expand menu" : "Collapse menu"}
+          className="hidden md:flex absolute -right-3 top-6 z-40 w-6 h-6 items-center justify-center rounded-full bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white border border-slate-700 shadow-md transition-all cursor-pointer group"
+        >
+          {isSidebarCollapsed ? (
+            <ChevronRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 text-blue-400 group-hover:text-white" />
+          ) : (
+            <ChevronLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+          )}
+        </button>
+
         {/* Sidebar Header / Logo */}
-        <div className="p-4 md:p-5 border-b border-slate-800 flex items-center justify-between md:justify-start gap-3 h-[73px] min-h-[73px] shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 text-white p-2 rounded-xl">
+        <div className={`p-4 border-b border-slate-800 flex items-center ${
+          isSidebarCollapsed ? 'md:justify-center md:px-2' : 'justify-between'
+        } gap-3 h-[73px] min-h-[73px] shrink-0 transition-all duration-300`}>
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="bg-blue-600 text-white p-2 rounded-xl shrink-0 shadow-sm" title="MES Workshop3">
               <Wrench className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base font-bold tracking-tight font-display text-white leading-tight">MES Workshop3</h2>
-              <p className="text-[10px] text-slate-400 font-medium">Repair Tracking ERP</p>
-            </div>
+            {!isSidebarCollapsed && (
+              <div className="overflow-hidden whitespace-nowrap">
+                <h2 className="text-base font-bold tracking-tight font-display text-white leading-tight">MES Workshop3</h2>
+                <p className="text-[10px] text-slate-400 font-medium">Repair Tracking ERP</p>
+              </div>
+            )}
           </div>
+
+          {/* Mobile close button */}
           <button
             onClick={() => setIsMobileMenuOpen(false)}
-            className="md:hidden p-1 text-slate-400 hover:text-white rounded-lg"
+            className="md:hidden p-1 text-slate-400 hover:text-white rounded-lg cursor-pointer"
+            aria-label="Close menu"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Navigation Sidebar List */}
-        <nav className="flex-1 p-3 md:p-4 space-y-1 overflow-y-auto text-left">
+        <nav className={`flex-1 ${isSidebarCollapsed ? 'p-2 md:px-2 space-y-1.5' : 'p-3 md:p-4 space-y-1'} overflow-y-auto overflow-x-hidden text-left`}>
           {visibleNavItems.map((item) => {
             const IconComponent = item.icon;
             const isSelected = activeTab === item.id;
@@ -757,20 +821,37 @@ export default function App() {
                   setActiveTab(item.id);
                   setIsMobileMenuOpen(false);
                 }}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 text-xs font-bold rounded-xl tracking-tight transition-all cursor-pointer ${
+                title={isSidebarCollapsed ? `${item.label}${item.stage ? ` • ${item.stage}` : ''}` : undefined}
+                className={`w-full flex items-center ${
+                  isSidebarCollapsed 
+                    ? 'md:justify-center md:px-0 md:py-3' 
+                    : 'justify-between px-3.5 py-2.5'
+                } text-xs font-bold rounded-xl tracking-tight transition-all cursor-pointer relative group ${
                   isSelected
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <IconComponent className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
+                <div className={`flex items-center ${isSidebarCollapsed ? 'md:justify-center' : 'gap-3'}`}>
+                  <IconComponent className={`w-4 h-4 shrink-0 ${isSelected ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`} />
+                  <span className={`${isSidebarCollapsed ? 'md:hidden' : ''} truncate`}>{item.label}</span>
                 </div>
-                {item.stage && !isSelected && (
-                  <span className="text-[9px] font-bold bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-sm border border-slate-750">
+                {item.stage && !isSelected && !isSidebarCollapsed && (
+                  <span className="text-[9px] font-bold bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-sm border border-slate-750 shrink-0">
                     {item.stage}
                   </span>
+                )}
+
+                {/* Floating Tooltip when collapsed */}
+                {isSidebarCollapsed && (
+                  <div className="hidden md:group-hover:flex absolute left-full ml-3 z-50 bg-slate-950 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-2xl border border-slate-700 whitespace-nowrap items-center gap-2 pointer-events-none animate-in fade-in-50 duration-150">
+                    <span>{item.label}</span>
+                    {item.stage && (
+                      <span className="text-[9px] bg-slate-800 text-blue-400 font-mono px-1.5 py-0.5 rounded border border-slate-700">
+                        {item.stage}
+                      </span>
+                    )}
+                  </div>
                 )}
               </button>
             );
@@ -778,28 +859,46 @@ export default function App() {
         </nav>
 
         {/* Refresh / Logout Footer */}
-        <div className="p-4 border-t border-slate-800 space-y-2">
+        <div className={`border-t border-slate-800 space-y-2 ${isSidebarCollapsed ? 'p-2 md:py-3' : 'p-4'}`}>
           <button
             onClick={loadAllERPData}
             disabled={dataLoading}
-            className="w-full flex items-center gap-2.5 justify-center py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 cursor-pointer min-h-[40px]"
+            title={isSidebarCollapsed ? "Force Sync Server" : undefined}
+            className={`w-full flex items-center justify-center ${
+              isSidebarCollapsed ? 'md:p-2.5' : 'gap-2.5 py-2'
+            } text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 cursor-pointer min-h-[40px] relative group`}
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${dataLoading ? 'animate-spin' : ''}`} />
-            {dataLoading ? 'Syncing...' : 'Force Sync Server'}
+            <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${dataLoading ? 'animate-spin' : ''}`} />
+            <span className={`${isSidebarCollapsed ? 'md:hidden' : ''} truncate`}>
+              {dataLoading ? 'Syncing...' : 'Force Sync Server'}
+            </span>
+            {isSidebarCollapsed && (
+              <div className="hidden md:group-hover:block absolute left-full ml-3 z-50 bg-slate-950 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-2xl border border-slate-700 whitespace-nowrap pointer-events-none animate-in fade-in-50 duration-150">
+                Force Sync Server
+              </div>
+            )}
           </button>
           
           <button
             onClick={handleSignOut}
-            className="w-full flex items-center gap-2.5 justify-center py-2 text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-950/30 border border-slate-800 hover:border-red-900 rounded-xl transition-all cursor-pointer min-h-[40px]"
+            title={isSidebarCollapsed ? "Sign Out of ERP" : undefined}
+            className={`w-full flex items-center justify-center ${
+              isSidebarCollapsed ? 'md:p-2.5' : 'gap-2.5 py-2'
+            } text-xs font-semibold text-red-400 hover:text-red-300 hover:bg-red-950/30 border border-slate-800 hover:border-red-900 rounded-xl transition-all cursor-pointer min-h-[40px] relative group`}
           >
-            <LogOut className="w-3.5 h-3.5" />
-            Sign Out of ERP
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            <span className={`${isSidebarCollapsed ? 'md:hidden' : ''} truncate`}>Sign Out of ERP</span>
+            {isSidebarCollapsed && (
+              <div className="hidden md:group-hover:block absolute left-full ml-3 z-50 bg-slate-950 text-red-300 text-xs font-semibold px-3 py-1.5 rounded-lg shadow-2xl border border-slate-700 whitespace-nowrap pointer-events-none animate-in fade-in-50 duration-150">
+                Sign Out of ERP
+              </div>
+            )}
           </button>
         </div>
       </aside>
 
       {/* RIGHT MAIN WORKPLACE COLUMN (Top Banner + Content View) */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden w-full" id="main-workplace-container">
+      <div className="flex-1 flex flex-col h-full overflow-hidden w-full transition-all duration-300 ease-in-out" id="main-workplace-container">
         {/* TOP BANNER: Logged in User + Role-Based Notification Bell & Center + Company Group Chat Button */}
         <TopUserBanner
           currentUser={userProfile}
@@ -827,7 +926,7 @@ export default function App() {
         />
 
         {/* SCROLLABLE MAIN VIEW AREA */}
-        <main className="flex-1 p-3 sm:p-5 lg:p-7 overflow-y-auto w-full">
+        <main className={`flex-1 ${isSidebarCollapsed ? 'p-2.5 sm:p-4 lg:p-6' : 'p-3 sm:p-5 lg:p-7'} overflow-y-auto w-full transition-all duration-300 ease-in-out`}>
           {dataLoading && (
             <div className="text-xs text-blue-600 bg-blue-50 border border-blue-200 py-1.5 px-4 rounded-full w-fit flex items-center gap-2 mb-4">
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
