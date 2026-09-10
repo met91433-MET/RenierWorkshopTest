@@ -8,6 +8,8 @@
         "uid": { "type": "string", "description": "Auth User ID" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
+        "password": { "type": "string", "description": "Account password for staff login" },
+        "roleTitle": { "type": "string", "description": "Display title of the user role" },
         "permissions": {
           "type": "object",
           "description": "Granular user feature permissions",
@@ -23,7 +25,8 @@
             "isAdmin": { "type": "boolean" }
           }
         },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email"]
     },

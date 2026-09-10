@@ -19,11 +19,13 @@ import JobCardDocument from './JobCardDocument';
 import PreQuoteDocumentPreview from './PreQuoteDocumentPreview';
 import MachineCardDocument from './MachineCardDocument';
 import CameraCaptureModal from './CameraCaptureModal';
+import { UserDetailModal } from './UserDetailModal';
 import { compressFile } from '../utils/imageCompressor';
 import { 
   Shield, 
   UserPlus, 
   Key, 
+  Lock,
   Settings, 
   FileSpreadsheet, 
   Plus, 
@@ -116,148 +118,34 @@ export default function AdminCenterView({
   // ========================================================
   // 1. STATE FOR USER ROLES & PERMISSIONS
   // ========================================================
-  const [editingUserUid, setEditingUserUid] = useState<string | null>(null);
-  const [tempPermissions, setTempPermissions] = useState<UserPermissions | null>(null);
-  const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
-  const [isResettingUsers, setIsResettingUsers] = useState(false);
+  const [selectedUserForModal, setSelectedUserForModal] = useState<UserProfile | null>(null);
+  const [userModalMode, setUserModalMode] = useState<'edit' | 'create'>('edit');
+  const [isUserDetailModalOpen, setIsUserDetailModalOpen] = useState(false);
 
-  // New user form state
-  const [newUserName, setNewUserName] = useState('');
-  const [newUserEmail, setNewUserEmail] = useState('');
-  const [newUserRolePreset, setNewUserRolePreset] = useState<string>('custom');
-  const [newUserPerms, setNewUserPerms] = useState<UserPermissions>({
-    canReceive: false,
-    canInspect: false,
-    canQuote: false,
-    canCreateJobCard: false,
-    canStores: false,
-    canWorksheet: false,
-    canReporting: false,
-    canClose: false,
-    isAdmin: false
-  });
-
-  const handleApplyRolePreset = (preset: string) => {
-    setNewUserRolePreset(preset);
-    if (preset === 'admin') {
-      setNewUserPerms({
-        canReceive: true, canInspect: true, canQuote: true, canCreateJobCard: true,
-        canStores: true, canWorksheet: true, canReporting: true, canClose: true, isAdmin: true
-      });
-    } else if (preset === 'jobadmin') {
-      setNewUserPerms({
-        canReceive: true, canInspect: false, canQuote: false, canCreateJobCard: true,
-        canStores: false, canWorksheet: false, canReporting: false, canClose: true, isAdmin: false
-      });
-    } else if (preset === 'worksheets') {
-      setNewUserPerms({
-        canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: false,
-        canStores: false, canWorksheet: true, canReporting: false, canClose: false, isAdmin: false
-      });
-    } else if (preset === 'stores') {
-      setNewUserPerms({
-        canReceive: false, canInspect: false, canQuote: false, canCreateJobCard: false,
-        canStores: true, canWorksheet: false, canReporting: false, canClose: false, isAdmin: false
-      });
-    } else if (preset === 'prequote') {
-      setNewUserPerms({
-        canReceive: false, canInspect: false, canQuote: true, canCreateJobCard: false,
-        canStores: false, canWorksheet: false, canReporting: false, canClose: false, isAdmin: false
-      });
-    } else if (preset === 'inspection') {
-      setNewUserPerms({
-        canReceive: true, canInspect: true, canQuote: false, canCreateJobCard: false,
-        canStores: false, canWorksheet: false, canReporting: false, canClose: false, isAdmin: false
-      });
-    }
+  const handleOpenEditUserModal = (user: UserProfile) => {
+    setSelectedUserForModal(user);
+    setUserModalMode('edit');
+    setIsUserDetailModalOpen(true);
   };
 
-  const handleCreateNewUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUserName.trim() || !newUserEmail.trim()) {
-      alert("Please provide both name and email address.");
-      return;
-    }
+  const handleOpenAddUserModal = () => {
+    setSelectedUserForModal(null);
+    setUserModalMode('create');
+    setIsUserDetailModalOpen(true);
+  };
 
-    const emailTrimmed = newUserEmail.trim().toLowerCase();
-    const existing = users.find(u => (u.email || '').toLowerCase() === emailTrimmed);
-    if (existing) {
-      alert("A user with this email address already exists in the system.");
-      return;
-    }
-
-    const newProfile: UserProfile = {
-      uid: `metalogik-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      email: emailTrimmed,
-      displayName: newUserName.trim(),
-      permissions: newUserPerms,
-      createdAt: new Date().toISOString()
-    };
-
+  const handleSaveUserFromModal = async (profile: UserProfile) => {
     if (onSaveUser) {
-      await onSaveUser(newProfile);
+      await onSaveUser(profile);
     }
-    
-    setIsAddUserModalOpen(false);
-    setNewUserName('');
-    setNewUserEmail('');
-    setNewUserRolePreset('custom');
-    alert(`User account "${newUserName}" created successfully.`);
-  };
-
-  const handleConfirmDeleteUser = async () => {
-    if (!userToDelete || !onDeleteUser) return;
-    try {
-      await onDeleteUser(userToDelete.uid);
-      setUserToDelete(null);
-      alert(`User profile "${userToDelete.displayName || userToDelete.email}" deleted.`);
-    } catch (e) {
-      console.error(e);
-      alert("Failed to delete user profile.");
+    if (onUpdateUserPermissions) {
+      await onUpdateUserPermissions(profile.uid, profile.permissions);
     }
   };
 
-  const handleResetMetalogikUsersClick = async () => {
-    if (!window.confirm("Are you sure you want to purge non-Metalogik users and reset the 9 official Metalogik staff members?")) {
-      return;
-    }
-    setIsResettingUsers(true);
-    try {
-      if (onResetMetalogikUsers) {
-        await onResetMetalogikUsers();
-      }
-      alert("Metalogik staff team has been successfully reset and synchronized (9 users).");
-    } catch (e) {
-      console.error(e);
-      alert("Error resetting Metalogik users.");
-    } finally {
-      setIsResettingUsers(false);
-    }
-  };
-
-  const startEditPermissions = (user: UserProfile) => {
-    setEditingUserUid(user.uid);
-    setTempPermissions({ ...user.permissions });
-  };
-
-  const handlePermissionToggle = (key: keyof UserPermissions) => {
-    if (!tempPermissions) return;
-    setTempPermissions(prev => ({
-      ...prev!,
-      [key]: !prev![key]
-    }));
-  };
-
-  const savePermissions = async (uid: string) => {
-    if (!tempPermissions) return;
-    try {
-      await onUpdateUserPermissions(uid, tempPermissions);
-      setEditingUserUid(null);
-      setTempPermissions(null);
-      alert("User permissions successfully updated.");
-    } catch (e) {
-      alert("Error saving permissions.");
+  const handleDeleteUserFromModal = async (uid: string) => {
+    if (onDeleteUser) {
+      await onDeleteUser(uid);
     }
   };
 
@@ -1260,23 +1148,11 @@ export default function AdminCenterView({
                 )}
               </div>
 
-              {/* Reset Metalogik Users */}
-              <button
-                type="button"
-                onClick={handleResetMetalogikUsersClick}
-                disabled={isResettingUsers}
-                className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold px-2.5 py-1.5 rounded-xl text-xs transition-colors cursor-pointer disabled:opacity-50"
-                title="Purge all other accounts and restore the 9 official Metalogik staff members"
-              >
-                <RotateCcw className={`w-3.5 h-3.5 ${isResettingUsers ? 'animate-spin' : ''}`} />
-                <span>Reset Metalogik Users</span>
-              </button>
-
               {/* Add User */}
               <button
                 type="button"
-                onClick={() => setIsAddUserModalOpen(true)}
-                className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-colors shadow-2xs cursor-pointer"
+                onClick={handleOpenAddUserModal}
+                className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs transition-colors shadow-2xs cursor-pointer"
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 <span>Add User</span>
@@ -1287,18 +1163,11 @@ export default function AdminCenterView({
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left">
               <thead>
-                <tr className="bg-slate-50/80 text-slate-500 font-bold uppercase tracking-wider text-[9px] border-b border-slate-200">
-                  <th className="py-2.5 pl-4 pr-2 font-bold">Operator Account</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stage 1: Job Receiving">Receiving</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stage 2: Technical Inspection">Inspection</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stage 3: Pre-Quotation">Pre-Quote</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stage 4: Job Card Administration">Job Admin</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Stores & Tools Inventory">Stores</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Worksheet Timesheet Logs">Worksheets</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Workshop Analytics & Reports">Reporting</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Job Card Search & Enquiries">Enquiries</th>
-                  <th className="py-2.5 px-1.5 text-center font-bold" title="Full System Administrator Access">Admin</th>
-                  <th className="py-2.5 pr-4 pl-2 text-right font-bold">Actions</th>
+                <tr className="bg-slate-50/80 text-slate-500 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                  <th className="py-3 pl-4 pr-3 font-bold">User / Operator</th>
+                  <th className="py-3 px-3 font-bold">Assigned Roles & Module Clearances</th>
+                  <th className="py-3 px-3 font-bold">Credentials & Security</th>
+                  <th className="py-3 pr-4 pl-3 text-right font-bold">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1307,175 +1176,136 @@ export default function AdminCenterView({
                   const q = userSearchQuery.toLowerCase();
                   return (u.displayName || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
                 }).map((user) => {
-                  const isEditing = editingUserUid === user.uid;
-                  const perms = isEditing ? tempPermissions! : user.permissions;
+                  const perms: Partial<UserPermissions> = user.permissions || {};
+                  const isFullAdmin = perms.isAdmin && perms.canReceive && perms.canInspect && perms.canQuote && perms.canCreateJobCard && perms.canStores && perms.canWorksheet && perms.canReporting && perms.canClose;
+                  
+                  // Collect active modules
+                  const activeModules: { label: string; color: string }[] = [];
+                  if (perms.isAdmin) activeModules.push({ label: 'Admin Center', color: 'bg-red-50 text-red-700 border-red-200' });
+                  if (perms.canReceive) activeModules.push({ label: 'Receiving', color: 'bg-blue-50 text-blue-700 border-blue-200' });
+                  if (perms.canInspect) activeModules.push({ label: 'Inspection', color: 'bg-amber-50 text-amber-700 border-amber-200' });
+                  if (perms.canQuote) activeModules.push({ label: 'Pre-Quote', color: 'bg-purple-50 text-purple-700 border-purple-200' });
+                  if (perms.canCreateJobCard) activeModules.push({ label: 'Job Admin', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' });
+                  if (perms.canStores) activeModules.push({ label: 'Stores', color: 'bg-cyan-50 text-cyan-700 border-cyan-200' });
+                  if (perms.canWorksheet) activeModules.push({ label: 'Worksheets', color: 'bg-indigo-50 text-indigo-700 border-indigo-200' });
+                  if (perms.canReporting) activeModules.push({ label: 'Reporting', color: 'bg-rose-50 text-rose-700 border-rose-200' });
+                  if (perms.canClose) activeModules.push({ label: 'Enquiries', color: 'bg-slate-100 text-slate-700 border-slate-200' });
 
                   return (
                     <tr 
                       key={user.uid} 
-                      className={`transition-colors ${isEditing ? 'bg-blue-50/40' : 'hover:bg-slate-50/60'}`}
+                      onClick={() => handleOpenEditUserModal(user)}
+                      className="group transition-colors hover:bg-blue-50/50 cursor-pointer"
+                      title="Click user to edit profile, change password, and configure roles"
                     >
                       {/* Operator Account Column */}
-                      <td className="py-2.5 pl-4 pr-2">
-                        <div className="flex items-center gap-2 max-w-[220px]">
-                          <div className="w-7 h-7 rounded-full bg-slate-800 text-white font-black text-[10px] flex items-center justify-center shrink-0 shadow-2xs">
+                      <td className="py-3 pl-4 pr-3 align-top">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-slate-900 text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs group-hover:bg-blue-600 transition-colors">
                             {(user.displayName || user.email || 'U').charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-bold text-slate-800 text-xs truncate leading-tight">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <p className="font-bold text-slate-800 text-xs group-hover:text-blue-700 transition-colors">
                                 {user.displayName || 'Unnamed Operator'}
                               </p>
                               {user.permissions?.isAdmin && (
-                                <span className="bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.2 rounded uppercase shrink-0">
+                                <span className="bg-red-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase shrink-0">
                                   Admin
                                 </span>
                               )}
+                              {user.roleTitle && (
+                                <span className="bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-medium px-1.5 py-0.5 rounded-md shrink-0">
+                                  {user.roleTitle}
+                                </span>
+                              )}
                             </div>
-                            <p className="text-slate-400 font-mono text-[10px] truncate leading-tight mt-0.5">
+                            <p className="text-slate-400 font-mono text-[11px] truncate mt-0.5">
                               {user.email}
                             </p>
                           </div>
                         </div>
                       </td>
 
-                      {/* Recv */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.canReceive)}
-                          onChange={() => handlePermissionToggle('canReceive')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
+                      {/* Assigned Roles & Clearances */}
+                      <td className="py-3 px-3 align-top">
+                        {isFullAdmin ? (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-200 text-[11px] font-bold">
+                            <Shield className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                            <span>Full System Administrator (All Modules)</span>
+                          </div>
+                        ) : activeModules.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center gap-1 text-[11px] font-bold text-slate-600">
+                              <span>{activeModules.length} of 9 modules granted</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1 max-w-xl">
+                              {activeModules.map(m => (
+                                <span 
+                                  key={m.label} 
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${m.color}`}
+                                >
+                                  {m.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-500 text-[11px] font-medium">
+                            No active module access
+                          </span>
+                        )}
                       </td>
 
-                      {/* Inspect */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.canInspect)}
-                          onChange={() => handlePermissionToggle('canInspect')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
-                      </td>
-
-                      {/* Quote */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.canQuote)}
-                          onChange={() => handlePermissionToggle('canQuote')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
-                      </td>
-
-                      {/* Cards */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.canCreateJobCard)}
-                          onChange={() => handlePermissionToggle('canCreateJobCard')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
-                      </td>
-
-                      {/* Stores */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.canStores)}
-                          onChange={() => handlePermissionToggle('canStores')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
-                      </td>
-
-                      {/* Worksheet Logs */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.canWorksheet)}
-                          onChange={() => handlePermissionToggle('canWorksheet')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
-                      </td>
-
-                      {/* Reporting */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.canReporting)}
-                          onChange={() => handlePermissionToggle('canReporting')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
-                      </td>
-
-                      {/* Enquiries / Close */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.canClose)}
-                          onChange={() => handlePermissionToggle('canClose')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
-                      </td>
-
-                      {/* Admin */}
-                      <td className="py-2.5 px-1.5 text-center">
-                        <input 
-                          type="checkbox" 
-                          disabled={!isEditing}
-                          checked={Boolean(perms.isAdmin)}
-                          onChange={() => handlePermissionToggle('isAdmin')}
-                          className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300 disabled:opacity-75 cursor-pointer disabled:cursor-default"
-                        />
+                      {/* Credentials & Security */}
+                      <td className="py-3 px-3 align-top">
+                        {user.password ? (
+                          <div className="space-y-0.5">
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                              <Lock className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>Custom Password Active</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">Click to change or reset</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-0.5">
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-medium">
+                              <Key className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span>Standard Account</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">Click to set password</p>
+                          </div>
+                        )}
                       </td>
 
                       {/* Action */}
-                      <td className="py-2.5 pr-4 pl-2 text-right">
-                        {isEditing ? (
-                          <div className="flex gap-1 justify-end">
-                            <button
-                              type="button"
-                              onClick={() => savePermissions(user.uid)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-md text-[11px] shadow-2xs transition-colors cursor-pointer"
-                            >
-                              Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setEditingUserUid(null); setTempPermissions(null); }}
-                              className="bg-slate-100 hover:bg-slate-200 text-slate-600 border border-slate-200 font-semibold px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-1 justify-end items-center">
-                            <button
-                              type="button"
-                              onClick={() => startEditPermissions(user)}
-                              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 font-bold px-2 py-1 rounded-md text-[11px] transition-colors cursor-pointer whitespace-nowrap"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setUserToDelete(user)}
-                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-md transition-colors cursor-pointer"
-                              title="Delete user profile"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
+                      <td className="py-3 pr-4 pl-3 text-right align-top">
+                        <div className="flex gap-1.5 justify-end items-center">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditUserModal(user);
+                            }}
+                            className="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/80 font-bold px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer whitespace-nowrap"
+                          >
+                            <Edit className="w-3 h-3" />
+                            <span>Edit Roles & Info</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Are you sure you want to delete user account "${user.displayName || user.email}"? This action cannot be undone.`)) {
+                                await handleDeleteUserFromModal(user.uid);
+                              }
+                            }}
+                            className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+                            title="Delete user profile"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1484,167 +1314,19 @@ export default function AdminCenterView({
             </table>
           </div>
 
-          {/* ADD USER MODAL */}
-          {isAddUserModalOpen && (
-            <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-150 pb-3">
-                  <div className="flex items-center gap-2">
-                    <UserPlus className="w-5 h-5 text-blue-600" />
-                    <h3 className="text-base font-bold text-slate-800 font-display">Add Workshop User</h3>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddUserModalOpen(false)}
-                    className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleCreateNewUser} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Paulo"
-                      value={newUserName}
-                      onChange={(e) => setNewUserName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:outline-hidden focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="e.g. paulo@metalogik.co.za"
-                      value={newUserEmail}
-                      onChange={(e) => setNewUserEmail(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium focus:outline-hidden focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Role Preset Quick-Select</label>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {[
-                        { id: 'admin', label: 'Full Admin' },
-                        { id: 'jobadmin', label: 'Job Admin' },
-                        { id: 'worksheets', label: 'Worksheets' },
-                        { id: 'stores', label: 'Stores' },
-                        { id: 'prequote', label: 'Prequote' },
-                        { id: 'inspection', label: 'Inspection' },
-                      ].map(preset => (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => handleApplyRolePreset(preset.id)}
-                          className={`px-2 py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
-                            newUserRolePreset === preset.id
-                              ? 'bg-blue-600 text-white border-blue-600'
-                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-2">Module Access Permissions</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                      {[
-                        { key: 'canReceive', label: 'Receiving' },
-                        { key: 'canInspect', label: 'Inspection' },
-                        { key: 'canQuote', label: 'Pre-Quote' },
-                        { key: 'canCreateJobCard', label: 'Job Admin' },
-                        { key: 'canStores', label: 'Stores' },
-                        { key: 'canWorksheet', label: 'Worksheets' },
-                        { key: 'canReporting', label: 'Reporting' },
-                        { key: 'canClose', label: 'Enquiries & Close' },
-                        { key: 'isAdmin', label: 'Full Admin Access' },
-                      ].map(item => (
-                        <label key={item.key} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={Boolean((newUserPerms as any)[item.key])}
-                            onChange={() => {
-                              setNewUserRolePreset('custom');
-                              setNewUserPerms(prev => ({
-                                ...prev,
-                                [item.key]: !(prev as any)[item.key]
-                              }));
-                            }}
-                            className="rounded text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 border-slate-300"
-                          />
-                          <span>{item.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2 border-t border-slate-150">
-                    <button
-                      type="button"
-                      onClick={() => setIsAddUserModalOpen(false)}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
-                    >
-                      Create User
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {/* DELETE USER CONFIRMATION MODAL */}
-          {userToDelete && (
-            <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-4">
-                <div className="flex items-center gap-3 text-red-600">
-                  <div className="p-2.5 bg-red-100 rounded-xl">
-                    <Trash2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">Delete User Account</h3>
-                    <p className="text-xs text-slate-500">This action cannot be undone.</p>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <p className="text-xs font-bold text-slate-800">{userToDelete.displayName || 'Unnamed User'}</p>
-                  <p className="text-[11px] text-slate-500 font-mono mt-0.5">{userToDelete.email}</p>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setUserToDelete(null)}
-                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmDeleteUser}
-                    className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-colors shadow-2xs cursor-pointer"
-                  >
-                    Delete User
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* USER DETAIL & ROLES MODAL */}
+          <UserDetailModal
+            isOpen={isUserDetailModalOpen}
+            user={selectedUserForModal}
+            mode={userModalMode}
+            onClose={() => {
+              setIsUserDetailModalOpen(false);
+              setSelectedUserForModal(null);
+            }}
+            onSave={handleSaveUserFromModal}
+            onDelete={handleDeleteUserFromModal}
+            existingEmails={users.map(u => u.email)}
+          />
         </div>
       )}
 

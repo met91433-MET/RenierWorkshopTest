@@ -11,7 +11,9 @@ import {
 import { 
   doc, 
   getDoc, 
-  setDoc 
+  setDoc,
+  collection,
+  getDocs
 } from 'firebase/firestore';
 import { 
   ShieldAlert, 
@@ -116,6 +118,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           uid,
           email: emailTrimmed,
           displayName: matchedMetalogik?.name || displayName.trim() || emailTrimmed.split('@')[0],
+          password,
           permissions: perms,
           createdAt: new Date().toISOString()
         };
@@ -124,6 +127,23 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       }
     } catch (err: any) {
       console.error("Sign in error:", err);
+      // Fallback check against saved user profile password
+      try {
+        const emailTrimmed = email.trim().toLowerCase();
+        const userSnapshot = await getDocs(collection(db, 'users'));
+        const matchedUser = userSnapshot.docs
+          .map(d => d.data() as UserProfile)
+          .find(u => (u.email || '').toLowerCase().trim() === emailTrimmed);
+
+        if (matchedUser && matchedUser.password && matchedUser.password === password) {
+          onLoginSuccess(matchedUser);
+          setIsLoading(false);
+          return;
+        }
+      } catch (dbErr) {
+        console.error("Fallback auth check error:", dbErr);
+      }
+
       if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
         setErrorMsg('No user account or password found for this email. If this is your first time signing in, please click "First-Time Sign In / Create Password" above.');
       } else if (err.code === 'auth/wrong-password') {
@@ -180,6 +200,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         uid,
         email: emailTrimmed,
         displayName: displayName.trim() || matchedMetalogik?.name || emailTrimmed.split('@')[0],
+        password,
         permissions: perms,
         createdAt: new Date().toISOString()
       };
@@ -232,6 +253,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           uid,
           email: emailTrimmed,
           displayName: selectedStaff.name,
+          password: staffPassword,
           permissions: selectedStaff.perms,
           createdAt: new Date().toISOString()
         };
@@ -259,6 +281,7 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
           uid,
           email: emailTrimmed,
           displayName: selectedStaff.name,
+          password: staffPassword,
           permissions: selectedStaff.perms,
           createdAt: new Date().toISOString()
         };
@@ -267,6 +290,23 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         setSelectedStaff(null);
         onLoginSuccess(profile);
       } catch (err: any) {
+        // Fallback check against saved user profile password
+        try {
+          const userSnapshot = await getDocs(collection(db, 'users'));
+          const matchedUser = userSnapshot.docs
+            .map(d => d.data() as UserProfile)
+            .find(u => (u.email || '').toLowerCase().trim() === emailTrimmed);
+
+          if (matchedUser && matchedUser.password && matchedUser.password === staffPassword) {
+            setSelectedStaff(null);
+            onLoginSuccess(matchedUser);
+            setIsLoading(false);
+            return;
+          }
+        } catch (dbErr) {
+          console.error("Fallback staff auth check error:", dbErr);
+        }
+
         if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
           setStaffErrorMsg('Incorrect password. If you have not created your password yet, switch to the "First-Time Sign In" tab.');
         } else if (err.code === 'auth/user-not-found') {
