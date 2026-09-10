@@ -12,7 +12,13 @@ import {
   Image as ImageIcon, 
   HelpCircle,
   FileSpreadsheet,
-  Camera
+  Camera,
+  Sparkles,
+  Loader2,
+  Scan,
+  X,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 
 interface ReceivingViewProps {
@@ -101,13 +107,208 @@ export default function ReceivingView({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
 
-  // File uploading states
+  // File uploading & AI extraction states
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [cameraTarget, setCameraTarget] = useState<{ isDeliveryLevel: boolean; jobIdx?: number; categoryName?: string } | null>(null);
 
-  // Helper to process array of Files
+  // AI Extraction state
+  const [isExtractingAi, setIsExtractingAi] = useState(false);
+  const [aiStatusMsg, setAiStatusMsg] = useState('');
+  const [aiExtractedBanner, setAiExtractedBanner] = useState<{
+    summary: string;
+    details: string[];
+    timestamp: string;
+    isError?: boolean;
+  } | null>(null);
+
+  // Auto-populate delivery information from picture using Gemini AI
+  const autoPopulateFromPicture = async (
+    imageUrls: string[],
+    sourceType: 'delivery' | 'job',
+    targetJobIdx?: number
+  ) => {
+    if (!imageUrls || imageUrls.length === 0) return;
+    setIsExtractingAi(true);
+    setAiStatusMsg('Analyzing picture with AI to extract delivery information...');
+
+    try {
+      const res = await fetch('/api/parse-delivery-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          images: imageUrls,
+          knownCustomers: customers.map(c => ({ id: c.id, name: c.name })),
+          knownComponentTypes: componentsList.map(c => c.name || c.id)
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server responded with status ${res.status}`);
+      }
+
+      const result = await res.json();
+      if (!result.success || !result.data) {
+        throw new Error(result.error || 'No readable delivery data returned');
+      }
+
+      const info = result.data;
+      const detectedDetails: string[] = [];
+
+      // 1. Delivery Note Number
+      if (info.deliveryNoteNumber && info.deliveryNoteNumber.trim()) {
+        const cleanDn = info.deliveryNoteNumber.trim();
+        setDeliveryNoteNumber(cleanDn);
+        detectedDetails.push(`Delivery Note: ${cleanDn}`);
+      }
+
+      // 2. Customer matching
+      let matchedCust: Customer | undefined;
+      if (info.matchedCustomerId) {
+        matchedCust = customers.find(c => c.id === info.matchedCustomerId);
+      }
+      if (!matchedCust && info.customerName) {
+        const query = info.customerName.toLowerCase().trim();
+        matchedCust = customers.find(c => 
+          c.name.toLowerCase() === query || 
+          c.name.toLowerCase().includes(query) || 
+          query.includes(c.name.toLowerCase())
+        );
+      }
+      if (matchedCust) {
+        setSelectedCustomerId(matchedCust.id);
+        detectedDetails.push(`Customer: ${matchedCust.name}`);
+      } else if (info.customerName && info.customerName.trim()) {
+        detectedDetails.push(`Customer detected: "${info.customerName}"`);
+      }
+
+      // 3. Date Received
+      if (info.dateReceived && /^\d{4}-\d{2}-\d{2}$/.test(info.dateReceived)) {
+        setDateReceived(info.dateReceived);
+        detectedDetails.push(`Date: ${info.dateReceived}`);
+      }
+
+      // 4. Job Items & Reference fields
+      const hasExtractedItems = Array.isArray(info.items) && info.items.length > 0;
+      const generalOrderNumber = info.orderNumber?.trim() || '';
+      const generalYourRef = info.yourRef?.trim() || '';
+      const generalCustJob = info.customerJobNumber?.trim() || '';
+
+      if (targetJobIdx !== undefined) {
+        // Specific component/job row was targeted
+        setJobItems(prev => {
+          const updated = [...prev];
+          if (updated[targetJobIdx]) {
+            const firstItem = hasExtractedItems ? info.items[0] : null;
+            if (firstItem?.serialNumber) {
+              updated[targetJobIdx].serialNumber = firstItem.serialNumber;
+              detectedDetails.push(`Part/Serial #: ${firstItem.serialNumber}`);
+            }
+            if (firstItem?.modelName) {
+              updated[targetJobIdx].modelName = firstItem.modelName;
+              detectedDetails.push(`Model: ${firstItem.modelName}`);
+            }
+            if (firstItem?.componentType) {
+              const matchedComp = componentsList.find(c => 
+                c.id.toLowerCase() === firstItem.componentType.toLowerCase() ||
+                c.name.toLowerCase() === firstItem.componentType.toLowerCase()
+              );
+              if (matchedComp) {
+                updated[targetJobIdx].componentType = matchedComp.id || matchedComp.name;
+                detectedDetails.push(`Component: ${matchedComp.name || matchedComp.id}`);
+              }
+            }
+            if (firstItem?.orderNumber || generalOrderNumber) {
+              const poNum = firstItem?.orderNumber || generalOrderNumber;
+              updated[targetJobIdx].orderNumber = poNum;
+              detectedDetails.push(`Order/PO #: ${poNum}`);
+            }
+            if (generalYourRef) updated[targetJobIdx].yourRef = generalYourRef;
+            if (generalCustJob) updated[targetJobIdx].customerJobNumber = generalCustJob;
+          }
+          return updated;
+        });
+      } else if (hasExtractedItems) {
+        // Delivery note has one or more line items
+        setJobItems(prev => {
+          const newItems: TempJobItem[] = info.items.map((rawItem: any, index: number) => {
+            const matchedComp = componentsList.find(c => 
+              c.id.toLowerCase() === (rawItem.componentType || '').toLowerCase() ||
+              c.name.toLowerCase() === (rawItem.componentType || '').toLowerCase()
+            ) || componentsList[0];
+
+            const compType = matchedComp ? (matchedComp.id || matchedComp.name) : (componentsList[0]?.id || 'Spindle');
+            const model = rawItem.modelName || matchedComp?.models[0] || '';
+            const serial = rawItem.serialNumber || '';
+            const order = rawItem.orderNumber || generalOrderNumber;
+
+            if (serial) detectedDetails.push(`Item ${index + 1}: ${serial} (${model || compType})`);
+
+            // Preserve existing photos if modifying item 0
+            const existingFiles = (index === 0 && prev[0]?.files) ? prev[0].files : [];
+
+            return {
+              componentType: compType,
+              modelName: model,
+              serialNumber: serial,
+              files: existingFiles,
+              orderNumber: order,
+              yourRef: generalYourRef || 'NONE',
+              customerJobNumber: generalCustJob || 'NONE',
+              dueDate: getDefaultDueDate(info.dateReceived || dateReceived),
+              workshopArea: '9B'
+            };
+          });
+
+          return newItems.length > 0 ? newItems : prev;
+        });
+      } else {
+        // Apply references to existing job items
+        if (generalOrderNumber || generalYourRef || generalCustJob) {
+          setJobItems(prev => prev.map(item => ({
+            ...item,
+            orderNumber: generalOrderNumber || item.orderNumber,
+            yourRef: generalYourRef || item.yourRef,
+            customerJobNumber: generalCustJob || item.customerJobNumber
+          })));
+          if (generalOrderNumber) detectedDetails.push(`Order/PO #: ${generalOrderNumber}`);
+          if (generalYourRef) detectedDetails.push(`Your Ref: ${generalYourRef}`);
+        }
+      }
+
+      if (detectedDetails.length > 0) {
+        setAiExtractedBanner({
+          summary: info.rawExtractedSummary || 'Delivery information extracted successfully from picture.',
+          details: detectedDetails,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isError: false
+        });
+      } else {
+        setAiExtractedBanner({
+          summary: info.rawExtractedSummary || 'Picture analyzed, but no recognizable delivery fields were detected.',
+          details: ['You can enter or verify details manually.'],
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isError: false
+        });
+      }
+    } catch (err: any) {
+      console.warn('AI Extraction from picture failed:', err);
+      setAiExtractedBanner({
+        summary: 'Could not auto-extract delivery information from picture.',
+        details: [err?.message || 'Manual entry is available.'],
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isError: true
+      });
+    } finally {
+      setIsExtractingAi(false);
+      setAiStatusMsg('');
+    }
+  };
+
+  // Helper to process array of Files and automatically extract delivery information
   const processFilesList = async (fileList: File[], isDeliveryLevel: boolean, jobIdx?: number) => {
+    const newlyAddedJobFiles: JobFile[] = [];
     for (const file of fileList) {
       const { dataUrl, size } = await compressFile(file, 1024, 0.65);
       const jobFile: JobFile = {
@@ -118,6 +319,7 @@ export default function ReceivingView({
         uploadedAt: new Date().toISOString(),
         category: isDeliveryLevel ? 'delivery' : 'job'
       };
+      newlyAddedJobFiles.push(jobFile);
 
       if (isDeliveryLevel) {
         setDeliveryFiles(prev => deduplicateJobFiles([...prev, jobFile]));
@@ -128,6 +330,13 @@ export default function ReceivingView({
           return updated;
         });
       }
+    }
+
+    // When picture is captured or uploaded, automatically populate delivery information!
+    const imageFiles = newlyAddedJobFiles.filter(f => f.type.startsWith('image/') && f.dataUrl);
+    if (imageFiles.length > 0) {
+      const imageUrls = imageFiles.map(f => f.dataUrl);
+      autoPopulateFromPicture(imageUrls, isDeliveryLevel ? 'delivery' : 'job', jobIdx);
     }
   };
 
@@ -305,7 +514,69 @@ export default function ReceivingView({
           {/* Section 1: Delivery Sheet Information */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">1. Delivery Sheet Details</h2>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">1. Delivery Sheet Details</h2>
+                {deliveryFiles.filter(f => f.type.startsWith('image/')).length > 0 && (
+                  <button
+                    type="button"
+                    disabled={isExtractingAi}
+                    onClick={() => {
+                      const imgs = deliveryFiles.filter(f => f.type.startsWith('image/')).map(f => f.dataUrl);
+                      autoPopulateFromPicture(imgs, 'delivery');
+                    }}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                    Re-extract From Picture
+                  </button>
+                )}
+              </div>
+
+              {/* AI Processing Status */}
+              {isExtractingAi && (
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 flex items-center gap-3 text-indigo-900 text-xs animate-pulse">
+                  <Loader2 className="w-4 h-4 text-indigo-600 animate-spin flex-shrink-0" />
+                  <div className="flex-1 font-medium">
+                    {aiStatusMsg || 'Analyzing picture with AI to populate delivery information...'}
+                  </div>
+                </div>
+              )}
+
+              {/* AI Extracted Information Summary */}
+              {aiExtractedBanner && (
+                <div className={`p-4 rounded-xl border flex flex-col gap-2 ${
+                  aiExtractedBanner.isError 
+                    ? 'bg-amber-50 border-amber-200 text-amber-900' 
+                    : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 text-slate-800'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 font-bold text-xs">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      <span>AI Auto-Populated from Picture</span>
+                      <span className="text-[10px] text-slate-400 font-normal">at {aiExtractedBanner.timestamp}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAiExtractedBanner(null)}
+                      className="text-slate-400 hover:text-slate-600 p-1 rounded-md cursor-pointer"
+                      title="Dismiss"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-600">{aiExtractedBanner.summary}</p>
+                  {aiExtractedBanner.details && aiExtractedBanner.details.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {aiExtractedBanner.details.map((item, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1 text-[11px] font-semibold bg-white border border-blue-200 text-blue-900 px-2 py-0.5 rounded-md shadow-2xs">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                          {item}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Customer */}
@@ -613,6 +884,31 @@ export default function ReceivingView({
                   </label>
                 </div>
               </div>
+
+              {/* Extract Info from Picture action */}
+              {deliveryFiles.filter(f => f.type.startsWith('image/')).length > 0 && (
+                <button
+                  type="button"
+                  disabled={isExtractingAi}
+                  onClick={() => {
+                    const imgs = deliveryFiles.filter(f => f.type.startsWith('image/')).map(f => f.dataUrl);
+                    autoPopulateFromPicture(imgs, 'delivery');
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 text-xs font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl py-2 px-3 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
+                >
+                  {isExtractingAi ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                      Reading Document Details with AI...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      Populate Delivery Info from Photo
+                    </>
+                  )}
+                </button>
+              )}
 
               {/* List Paperwork Files */}
               {deliveryFiles.length > 0 && (

@@ -180,7 +180,11 @@ export default function CameraCaptureModal({
                   </span>
                 )}
               </h3>
-              <p className="text-[11px] text-slate-400">Point device camera & snap photos directly</p>
+              <p className="text-[11px] text-slate-400">
+                {categoryName?.toLowerCase().includes('delivery') || categoryName?.toLowerCase().includes('paperwork')
+                  ? "✨ Snap delivery note or paperwork to automatically populate information with AI"
+                  : "Point device camera & snap photos directly"}
+              </p>
             </div>
           </div>
 
