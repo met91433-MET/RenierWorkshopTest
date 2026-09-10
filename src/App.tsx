@@ -728,28 +728,7 @@ export default function App() {
   const visibleNavItems = navigationItems.filter(item => hasAccess(item.id));
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col md:flex-row bg-slate-50 font-sans" id="app-container">
-      {/* MOBILE TOP NAVIGATION HEADER */}
-      <header className="md:hidden bg-slate-900 text-slate-200 px-4 py-3 border-b border-slate-800 flex items-center justify-between z-30 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <div className="bg-blue-600 text-white p-1.5 rounded-lg">
-            <Wrench className="w-4 h-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold tracking-tight font-display text-white">MES Workshop3</h2>
-            <p className="text-[9px] text-slate-400">Repair ERP</p>
-          </div>
-        </div>
-
-        <button
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-          aria-label="Toggle menu"
-        >
-          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </header>
-
+    <div className="h-screen h-[100dvh] w-screen overflow-hidden flex flex-col md:flex-row bg-slate-50 font-sans" id="app-container">
       {/* MOBILE MENU BACKDROP OVERLAY */}
       {isMobileMenuOpen && (
         <div 
@@ -760,10 +739,10 @@ export default function App() {
 
       {/* SIDEBAR NAVIGATION PANEL (Responsive slide-over on mobile, collapsible on desktop for bigger screen) */}
       <aside 
-        className={`fixed md:static inset-y-0 left-0 z-50 w-72 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-850 shrink-0 h-full relative transition-all duration-300 ease-in-out ${
+        className={`fixed md:relative inset-y-0 left-0 z-50 w-72 bg-slate-900 text-slate-200 flex flex-col border-r border-slate-850 shrink-0 h-full transition-all duration-300 ease-in-out ${
           isSidebarCollapsed ? 'md:w-20' : 'md:w-64'
         } ${
-          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+          isMobileMenuOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full md:translate-x-0'
         }`} 
         id="sidebar-panel"
       >
@@ -898,7 +877,7 @@ export default function App() {
       </aside>
 
       {/* RIGHT MAIN WORKPLACE COLUMN (Top Banner + Content View) */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden w-full transition-all duration-300 ease-in-out" id="main-workplace-container">
+      <div className="flex-1 min-h-0 md:h-full flex flex-col overflow-hidden w-full transition-all duration-300 ease-in-out" id="main-workplace-container">
         {/* TOP BANNER: Logged in User + Role-Based Notification Bell & Center + Company Group Chat Button */}
         <TopUserBanner
           currentUser={userProfile}
@@ -923,6 +902,8 @@ export default function App() {
           onForceSync={loadAllERPData}
           isSyncing={dataLoading}
           activeTab={activeTab}
+          onToggleMobileMenu={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          isMobileMenuOpen={isMobileMenuOpen}
         />
 
         {/* SCROLLABLE MAIN VIEW AREA */}

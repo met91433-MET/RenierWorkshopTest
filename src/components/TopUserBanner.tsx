@@ -32,7 +32,8 @@ import {
   KeyRound,
   Eye,
   EyeOff,
-  ShieldCheck
+  ShieldCheck,
+  Menu
 } from 'lucide-react';
 import { auth } from '../firebase';
 import { updatePassword } from 'firebase/auth';
@@ -175,6 +176,8 @@ interface TopUserBannerProps {
   onForceSync: () => void;
   isSyncing: boolean;
   activeTab: string;
+  onToggleMobileMenu?: () => void;
+  isMobileMenuOpen?: boolean;
 }
 
 export default function TopUserBanner({
@@ -190,7 +193,9 @@ export default function TopUserBanner({
   onSignOut,
   onForceSync,
   isSyncing,
-  activeTab
+  activeTab,
+  onToggleMobileMenu,
+  isMobileMenuOpen = false
 }: TopUserBannerProps) {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -416,31 +421,43 @@ export default function TopUserBanner({
   const userInitial = (currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase();
 
   return (
-    <div className="w-full bg-slate-900 border-b border-slate-800 text-slate-200 px-4 sm:px-6 h-[73px] min-h-[73px] shadow-sm sticky top-0 z-30 flex items-center justify-between gap-3 shrink-0">
-      {/* LEFT: User Profile Info Pill */}
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="relative">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black text-sm flex items-center justify-center shadow-inner border border-blue-400/30 shrink-0">
+    <div className="w-full bg-slate-900 border-b border-slate-800 text-slate-200 px-3 sm:px-6 h-14 sm:h-[73px] min-h-[56px] sm:min-h-[73px] shadow-sm sticky top-0 z-30 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
+      {/* LEFT: Mobile Menu Toggle + App Branding + User Profile Info Pill */}
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        {/* Mobile menu hamburger toggle button */}
+        {onToggleMobileMenu && (
+          <button
+            type="button"
+            onClick={onToggleMobileMenu}
+            className="md:hidden p-1.5 text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0 border border-slate-750"
+            aria-label="Toggle navigation menu"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5 text-blue-400" /> : <Menu className="w-5 h-5" />}
+          </button>
+        )}
+
+        <div className="relative shrink-0">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black text-xs sm:text-sm flex items-center justify-center shadow-inner border border-blue-400/30 shrink-0">
             {userInitial}
           </div>
           <span 
-            className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-slate-900 rounded-full" 
+            className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-emerald-500 border-2 border-slate-900 rounded-full" 
             title="Online & Real-time Connected" 
           />
         </div>
 
         <div className="text-left min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-xs sm:text-sm text-white truncate max-w-[150px] sm:max-w-[220px]">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <span className="font-bold text-xs sm:text-sm text-white truncate max-w-[110px] xs:max-w-[140px] sm:max-w-[220px]">
               {currentUser.displayName || 'Operator Account'}
             </span>
             {currentUser.permissions.isAdmin ? (
-              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs">
-                <Shield className="w-3 h-3" />
-                Administrator
+              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] sm:text-[10px] font-extrabold px-1.5 sm:px-2 py-0.5 rounded-md flex items-center gap-1 shadow-2xs shrink-0">
+                <Shield className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                <span>Admin</span>
               </span>
             ) : (
-              <span className="bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[10px] font-bold px-2 py-0.5 rounded-md truncate max-w-[130px]">
+              <span className="bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md truncate max-w-[90px] sm:max-w-[130px] shrink-0">
                 {clearanceTags[0] || 'Operator'}
               </span>
             )}
