@@ -71,6 +71,7 @@ import AdminCenterView from './components/AdminCenterView';
 import StoresDashboardView from './components/StoresDashboardView';
 import WorksheetDashboardView from './components/WorksheetDashboardView';
 import WorksheetReportsView from './components/WorksheetReportsView';
+import AiPaperworkPopulationView from './components/AiPaperworkPopulationView';
 import TopUserBanner from './components/TopUserBanner';
 import CompanyChatDrawer from './components/CompanyChatDrawer';
 
@@ -95,7 +96,8 @@ import {
   BookOpen,
   BarChart3,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 
 export default function App() {
@@ -146,6 +148,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showInactiveJobs, setShowInactiveJobs] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [aiPaperworkPrepopulateData, setAiPaperworkPrepopulateData] = useState<any>(null);
 
   // Left Sidebar Collapse State (persisted in localStorage for bigger screen experience)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => {
@@ -670,6 +673,8 @@ export default function App() {
         return !!p.canCreateJobCard;
       case 'stores':
         return !!p.canStores;
+      case 'ai-paperwork':
+        return true; // Test module accessible to test uploading paperwork with AI
       case 'worksheet':
         return !!p.canWorksheet;
       case 'reporting':
@@ -722,6 +727,7 @@ export default function App() {
     { id: 'worksheet', label: 'Worksheet', icon: BookOpen, stage: 'Workshop' },
     { id: 'reporting', label: 'Reporting', icon: BarChart3, stage: 'Analytics' },
     { id: 'stores', label: 'Stores & Tool Stock', icon: Boxes, stage: 'Inventory' },
+    { id: 'ai-paperwork', label: 'AI Paperwork Population', icon: Sparkles, stage: 'AI Lab' },
   ];
 
   // Only render menu items that the logged in user is authorized to access
@@ -989,6 +995,18 @@ export default function App() {
                 />
               )}
 
+              {activeTab === 'ai-paperwork' && (
+                <AiPaperworkPopulationView
+                  customers={customers}
+                  componentsList={componentsList}
+                  currentUser={userProfile}
+                  onTransferToReceiving={(data) => {
+                    setAiPaperworkPrepopulateData(data);
+                    setActiveTab('receiving');
+                  }}
+                />
+              )}
+
               {activeTab === 'receiving' && (
                 <ReceivingView 
                   customers={customers} 
@@ -997,6 +1015,7 @@ export default function App() {
                   onSaveJobs={handleSaveJobs}
                   currentUser={userProfile}
                   existingJobs={jobs}
+                  initialPrepopulatedData={aiPaperworkPrepopulateData}
                 />
               )}
 

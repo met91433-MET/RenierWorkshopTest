@@ -28,6 +28,22 @@ interface ReceivingViewProps {
   onSaveJobs: (jobs: Job[]) => Promise<void>;
   currentUser: any;
   existingJobs?: Job[];
+  initialPrepopulatedData?: {
+    deliveryNoteNumber?: string;
+    customerId?: string;
+    customerJobNumber?: string;
+    orderNumber?: string;
+    dateReceived?: string;
+    items?: {
+      componentType: string;
+      modelName: string;
+      serialNumber: string;
+      orderNumber?: string;
+      customerJobNumber?: string;
+      yourRef?: string;
+    }[];
+    files?: JobFile[];
+  } | null;
 }
 
 interface TempJobItem {
@@ -48,7 +64,8 @@ export default function ReceivingView({
   customColumns,
   onSaveJobs,
   currentUser,
-  existingJobs = []
+  existingJobs = [],
+  initialPrepopulatedData = null
 }: ReceivingViewProps) {
   // Main form fields
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
@@ -103,6 +120,46 @@ export default function ReceivingView({
       }));
     }
   }, [componentsList]);
+
+  // Handle pre-populated data from AI Paperwork Population module
+  React.useEffect(() => {
+    if (initialPrepopulatedData) {
+      if (initialPrepopulatedData.deliveryNoteNumber) {
+        setDeliveryNoteNumber(initialPrepopulatedData.deliveryNoteNumber);
+      }
+      if (initialPrepopulatedData.customerId) {
+        setSelectedCustomerId(initialPrepopulatedData.customerId);
+      }
+      if (initialPrepopulatedData.dateReceived) {
+        setDateReceived(initialPrepopulatedData.dateReceived);
+      }
+      if (Array.isArray(initialPrepopulatedData.files) && initialPrepopulatedData.files.length > 0) {
+        setDeliveryFiles(initialPrepopulatedData.files);
+      }
+      if (Array.isArray(initialPrepopulatedData.items) && initialPrepopulatedData.items.length > 0) {
+        setJobItems(initialPrepopulatedData.items.map(item => ({
+          componentType: item.componentType || 'Spindle',
+          modelName: item.modelName || '',
+          serialNumber: item.serialNumber || '',
+          files: [],
+          orderNumber: item.orderNumber || initialPrepopulatedData.orderNumber || '',
+          yourRef: item.yourRef || 'NONE',
+          customerJobNumber: item.customerJobNumber || initialPrepopulatedData.customerJobNumber || 'NONE',
+          dueDate: getDefaultDueDate(initialPrepopulatedData.dateReceived),
+          workshopArea: '9B'
+        })));
+      }
+      setAiExtractedBanner({
+        summary: `Transferred from AI Paperwork Population: Delivery Note #${initialPrepopulatedData.deliveryNoteNumber || ''} with ${initialPrepopulatedData.items?.length || 0} component receiving lines.`,
+        details: [
+          `Delivery Note: ${initialPrepopulatedData.deliveryNoteNumber || 'N/A'}`,
+          `Customer Job #: ${initialPrepopulatedData.customerJobNumber || 'N/A'}`,
+          `Components: ${initialPrepopulatedData.items?.length || 0} receiving lines pre-populated`
+        ],
+        timestamp: new Date().toLocaleTimeString()
+      });
+    }
+  }, [initialPrepopulatedData]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
