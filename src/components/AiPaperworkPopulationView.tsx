@@ -26,7 +26,6 @@ import {
 } from 'lucide-react';
 import { Customer, ComponentMatrix, JobFile } from '../types';
 import CameraCaptureModal from './CameraCaptureModal';
-import { generateSampleDeliveryNote, generateSampleRFQ } from '../utils/samplePaperworkGenerator';
 
 export interface ExtractedComponentLine {
   lineNumber: number;
@@ -111,6 +110,8 @@ export default function AiPaperworkPopulationView({
   // Modals & UI helpers
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [imageSource, setImageSource] = useState<'camera' | 'upload'>('upload');
+  const [hasAiPopulated, setHasAiPopulated] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -355,6 +356,7 @@ export default function AiPaperworkPopulationView({
         source
       };
       setTestRuns(prev => [newRun, ...prev.filter(r => r.id !== newRun.id)]);
+      setHasAiPopulated(true);
 
       if (usedFallback) {
         setSuccessNotice(`Populated ${lines.length} receiving component lines from document (Resilient Local Analyzer).`);
@@ -370,7 +372,7 @@ export default function AiPaperworkPopulationView({
     }
   };
 
-  // Handle file selection from local device
+  // Handle file selection from local device (loads photo for inspection, user clicks button to populate)
   const handleFileSelect = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
@@ -384,12 +386,15 @@ export default function AiPaperworkPopulationView({
       const dataUrl = reader.result as string;
       setCurrentImage(dataUrl);
       setImageFileName(file.name);
-      processImageWithAI(dataUrl, 'upload', file.name);
+      setImageSource('upload');
+      setHasAiPopulated(false);
+      setErrorMessage(null);
+      setSuccessNotice('Photo uploaded! Click "AI Populate Paperwork" to extract fields.');
     };
     reader.readAsDataURL(file);
   };
 
-  // Handle Camera Capture
+  // Handle Camera Capture (loads snap, user clicks button to populate)
   const handlePhotosCaptured = (files: File[]) => {
     setIsCameraModalOpen(false);
     if (!files || files.length === 0) return;
@@ -399,27 +404,21 @@ export default function AiPaperworkPopulationView({
       const dataUrl = reader.result as string;
       setCurrentImage(dataUrl);
       setImageFileName(`Camera_Snap_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '_')}.jpg`);
-      processImageWithAI(dataUrl, 'camera', 'camera_snap.jpg');
+      setImageSource('camera');
+      setHasAiPopulated(false);
+      setErrorMessage(null);
+      setSuccessNotice('Photo captured! Click "AI Populate Paperwork" to extract fields.');
     };
     reader.readAsDataURL(file);
   };
 
-  // Test with Sample Delivery Note Preset
-  const handleLoadSampleDeliveryNote = () => {
-    const sampleUrl = generateSampleDeliveryNote();
-    if (!sampleUrl) return;
-    setCurrentImage(sampleUrl);
-    setImageFileName('Sample_Delivery_Note_DN-99481.jpg');
-    processImageWithAI(sampleUrl, 'sample', 'sample_delivery_note.jpg');
-  };
-
-  // Test with Sample RFQ Preset
-  const handleLoadSampleRFQ = () => {
-    const sampleUrl = generateSampleRFQ();
-    if (!sampleUrl) return;
-    setCurrentImage(sampleUrl);
-    setImageFileName('Sample_RFQ_40892_Dispatch.jpg');
-    processImageWithAI(sampleUrl, 'sample', 'sample_rfq.jpg');
+  // Explicit action triggered by user clicking the AI Populate button
+  const handleRunAiPopulation = () => {
+    if (!currentImage) {
+      setErrorMessage('Please take or upload a paperwork photo first.');
+      return;
+    }
+    processImageWithAI(currentImage, imageSource, imageFileName || 'paperwork_document.jpg');
   };
 
   // Add a new component line manually
@@ -494,6 +493,7 @@ export default function AiPaperworkPopulationView({
     setOrderNumber('');
     setAiSummary('');
     setHasExtracted(false);
+    setHasAiPopulated(false);
     setErrorMessage(null);
     setSuccessNotice(null);
   };
@@ -744,41 +744,6 @@ export default function AiPaperworkPopulationView({
               />
             </div>
 
-            {/* QUICK TEST PRESETS FOR EASY DEMO / VERIFICATION */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-4">
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                Instant Test Presets (No camera required)
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={handleLoadSampleDeliveryNote}
-                  disabled={isProcessing}
-                  className="bg-white hover:bg-blue-50 border border-slate-200 hover:border-blue-300 text-slate-700 hover:text-blue-700 p-2 rounded-lg text-xs font-semibold text-left transition-all cursor-pointer shadow-2xs flex items-center justify-between"
-                >
-                  <div>
-                    <div className="font-bold text-slate-900">Sample Delivery Note</div>
-                    <div className="text-[10px] text-slate-500">DN-99481 (3 components)</div>
-                  </div>
-                  <FileText className="w-4 h-4 text-blue-500 shrink-0" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleLoadSampleRFQ}
-                  disabled={isProcessing}
-                  className="bg-white hover:bg-cyan-50 border border-slate-200 hover:border-cyan-300 text-slate-700 hover:text-cyan-700 p-2 rounded-lg text-xs font-semibold text-left transition-all cursor-pointer shadow-2xs flex items-center justify-between"
-                >
-                  <div>
-                    <div className="font-bold text-slate-900">Sample RFQ Dispatch</div>
-                    <div className="text-[10px] text-slate-500">RFQ-40892 (2 components)</div>
-                  </div>
-                  <FileSpreadsheet className="w-4 h-4 text-cyan-600 shrink-0" />
-                </button>
-              </div>
-            </div>
-
             {/* DRAG & DROP OR ACTIVE PHOTO PREVIEW */}
             {currentImage ? (
               <div className="space-y-3">
@@ -801,12 +766,12 @@ export default function AiPaperworkPopulationView({
                     </button>
                     <button
                       type="button"
-                      onClick={() => processImageWithAI(currentImage, 'upload', imageFileName)}
+                      onClick={handleRunAiPopulation}
                       disabled={isProcessing}
                       className="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer"
                     >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isProcessing ? 'animate-spin' : ''}`} />
-                      <span>Re-Analyze</span>
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <span>AI Populate</span>
                     </button>
                     <button
                       type="button"
@@ -832,36 +797,78 @@ export default function AiPaperworkPopulationView({
                     Inspect Photo
                   </button>
                 </div>
+
+                {/* AI POPULATE BUTTON */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    id="btn-ai-populate"
+                    onClick={handleRunAiPopulation}
+                    disabled={isProcessing}
+                    className="w-full flex items-center justify-center gap-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3.5 px-4 rounded-xl text-sm shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                        <span>Extracting Paperwork Data with AI...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-amber-300" />
+                        <span>{hasAiPopulated ? 'Re-Run AI Population' : 'AI Populate Paperwork'}</span>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[11px] text-slate-500 text-center mt-1.5">
+                    Click to extract Delivery Note #, Customer Job #, and Component Lines
+                  </p>
+                </div>
               </div>
             ) : (
               /* Drag & Drop Zone */
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
-                onDragLeave={() => setIsDragOver(false)}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setIsDragOver(false);
-                  handleFileSelect(e.dataTransfer.files);
-                }}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-                  isDragOver 
-                    ? 'border-blue-500 bg-blue-50/50 scale-[1.01]' 
-                    : 'border-slate-300 hover:border-blue-400 bg-slate-50/50 hover:bg-slate-50'
-                }`}
-              >
-                <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-3">
-                  <Upload className="w-6 h-6" />
+              <div>
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragOver(false);
+                    handleFileSelect(e.dataTransfer.files);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                    isDragOver 
+                      ? 'border-blue-500 bg-blue-50/50 scale-[1.01]' 
+                      : 'border-slate-300 hover:border-blue-400 bg-slate-50/50 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-3">
+                    <Upload className="w-6 h-6" />
+                  </div>
+                  <div className="text-sm font-bold text-slate-800">
+                    Drag and drop paperwork picture here
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Take a photo with your mobile device or drag a JPEG / PNG document
+                  </p>
+                  <div className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-white px-3 py-1.5 rounded-lg border border-blue-200 shadow-2xs">
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Choose file or take snap</span>
+                  </div>
                 </div>
-                <div className="text-sm font-bold text-slate-800">
-                  Drag and drop paperwork picture here
-                </div>
-                <p className="text-xs text-slate-500 mt-1">
-                  Take a photo with your mobile device or drag a JPEG / PNG document
-                </p>
-                <div className="mt-4 inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-white px-3 py-1.5 rounded-lg border border-blue-200 shadow-2xs">
-                  <Camera className="w-3.5 h-3.5" />
-                  <span>Choose file or take snap</span>
+
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-400 font-bold py-3 px-4 rounded-xl text-sm border border-slate-200 cursor-not-allowed"
+                  >
+                    <Sparkles className="w-4 h-4 text-slate-300" />
+                    <span>Take or Upload Photo to AI Populate</span>
+                  </button>
+                  <p className="text-[11px] text-slate-400 text-center mt-1.5">
+                    Step 1: Take or upload photo • Step 2: Click AI Populate
+                  </p>
                 </div>
               </div>
             )}
