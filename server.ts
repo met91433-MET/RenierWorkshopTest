@@ -196,28 +196,29 @@ app.post(['/api/parse-paperwork-ai', '/api/parse-paperwork-ai/', '/parse-paperwo
   try {
     const { image, images, knownCustomers, knownComponentTypes } = req.body;
 
-    // Collect base64 images
+    // Collect base64 images without heavy regex
     const rawImages: { data: string; mimeType: string }[] = [];
-    if (Array.isArray(images) && images.length > 0) {
-      for (const item of images) {
-        if (typeof item === 'string') {
-          const match = item.match(/^data:([^;]+);base64,(.+)$/);
-          if (match) {
-            rawImages.push({ mimeType: match[1], data: match[2] });
-          } else {
-            rawImages.push({ mimeType: 'image/jpeg', data: item });
-          }
-        } else if (item && item.data) {
-          rawImages.push({ mimeType: item.mimeType || 'image/jpeg', data: item.data });
+    const parseImageItem = (item: any) => {
+      if (!item) return;
+      if (typeof item === 'object' && item.data) {
+        rawImages.push({ mimeType: item.mimeType || 'image/jpeg', data: item.data });
+      } else if (typeof item === 'string') {
+        const commaIndex = item.indexOf(',');
+        if (item.startsWith('data:') && commaIndex !== -1) {
+          const meta = item.slice(5, commaIndex);
+          const mimeType = meta.split(';')[0] || 'image/jpeg';
+          const data = item.slice(commaIndex + 1);
+          rawImages.push({ mimeType, data });
+        } else {
+          rawImages.push({ mimeType: 'image/jpeg', data: item });
         }
       }
-    } else if (image && typeof image === 'string') {
-      const match = image.match(/^data:([^;]+);base64,(.+)$/);
-      if (match) {
-        rawImages.push({ mimeType: match[1], data: match[2] });
-      } else {
-        rawImages.push({ mimeType: 'image/jpeg', data: image });
-      }
+    };
+
+    if (Array.isArray(images) && images.length > 0) {
+      images.forEach(parseImageItem);
+    } else if (image) {
+      parseImageItem(image);
     }
 
     if (rawImages.length === 0) {
@@ -226,49 +227,9 @@ app.post(['/api/parse-paperwork-ai', '/api/parse-paperwork-ai/', '/parse-paperwo
 
     // Check if GEMINI_API_KEY is available
     if (!process.env.GEMINI_API_KEY) {
-      // Provide a structured fallback if no key is supplied
-      return res.json({
-        success: true,
-        data: {
-          deliveryNoteNumber: 'DN-99481',
-          customerJobNumber: 'CJ-2024-88A',
-          amountOfComponents: 3,
-          customerName: 'Precision Engineering Ltd',
-          documentDate: new Date().toISOString().split('T')[0],
-          orderNumber: 'PO-77291',
-          documentType: 'Customer Delivery Note',
-          rawExtractedSummary: 'Demo Extraction (Configure GEMINI_API_KEY in Secrets for live Gemini OCR): Extracted Delivery Note #DN-99481 with 3 component lines.',
-          componentLines: [
-            {
-              lineNumber: 1,
-              componentType: 'Spindle',
-              modelName: 'HSD ES929 24000RPM ISO30',
-              serialNumber: 'SN-884912',
-              quantity: 1,
-              description: 'Electrospindle - Bearing noise reported, evaluate for rebuild',
-              notes: 'Bearing noise, shaft runout inspection'
-            },
-            {
-              lineNumber: 2,
-              componentType: 'Motor',
-              modelName: 'Siemens 1FK7060-5AF71-1AH0',
-              serialNumber: 'SN-049281',
-              quantity: 1,
-              description: 'AC Servomotor - Resolver fault & rewinding check',
-              notes: 'Resolver check'
-            },
-            {
-              lineNumber: 3,
-              componentType: 'Pump',
-              modelName: 'Rexroth A10VSO45 DFR1/31R',
-              serialNumber: 'SN-552109',
-              quantity: 1,
-              description: 'Variable displacement hydraulic piston pump',
-              notes: 'Low pressure symptom'
-            }
-          ]
-        },
-        notice: 'Note: Using simulated fallback response because GEMINI_API_KEY is not configured in this environment.'
+      return res.status(503).json({
+        success: false,
+        error: 'GEMINI_API_KEY is not configured in the server environment. Please set GEMINI_API_KEY in the environment or Settings.'
       });
     }
 
@@ -286,30 +247,35 @@ app.post(['/api/parse-paperwork-ai', '/api/parse-paperwork-ai/', '/parse-paperwo
 You are an advanced industrial OCR and document understanding engine for an ERP workshop management system (MES Workshop3).
 Carefully read the provided picture of a Customer Delivery Note, Dispatch Advice, Packing Slip, or RFQ (Request for Quotation).
 
-Extract the exact paperwork information to populate these specific fields:
-1. "deliveryNoteNumber": The delivery note number, advice note number, DN #, packing slip #, or RFQ reference number.
+CRITICAL ACCURACY DIRECTIVES:
+- Extract the EXACT text and data visible in THIS specific photograph.
+- DO NOT invent, hallucinate, or substitute any demo/sample data or placeholders.
+- If a field is not present on the document, leave it as an empty string ("") or 0.
+
+Extract the paperwork information to populate these fields:
+1. "deliveryNoteNumber": The delivery note number, advice note number, DN #, packing slip #, or RFQ reference number visible on the document.
 2. "customerJobNumber": The customer job number, customer order/works number, customer asset/tag #, or reference number (look for "Customer Job No", "Cust Job #", "Works Order", "Tag", "Job No", "Ref").
-3. "amountOfComponents": The total number/amount of components or items delivered/quoted on the document (integer count).
+3. "amountOfComponents": The total number of items/components listed on the document (integer count).
 4. "componentLines": Itemize EACH component as a separate receiving component line:
    - "lineNumber": Sequential integer (1, 2, 3...)
    - "componentType": Match to the closest known component category (e.g. Spindle, Motor, Pump, Gearbox, Ball Screw, Cylinder, Tooling, etc.)
-   - "modelName": The specific model or type designation of the component (e.g. "HSD ES929", "Siemens 1FK7060-5AF71", "Rexroth A10VSO45", "Fanuc Alpha i 12/10000"). This is CRITICAL.
+   - "modelName": The specific model or type designation of the component visible on the document. This is CRITICAL.
    - "serialNumber": Serial number, part number, or asset code if present on the document.
    - "quantity": Quantity of this item (usually 1 or integer).
-   - "description": Description of the component or customer's stated fault/repair scope (e.g., "High vibration", "Bearing failure", "Rebuild required").
-   - "notes": Any specific customer remarks, urgency, or notes.
-5. "customerName": Customer, sender, or client company name.
+   - "description": Description of the component or customer's stated fault/repair scope as written on the document.
+   - "notes": Any specific customer remarks, urgency, or notes written on the document.
+5. "customerName": Customer, sender, or client company name on the document.
 6. "matchedCustomerId": ID of the matched known customer if found, otherwise empty string.
-7. "documentDate": Date on the document in "YYYY-MM-DD" format (or today's date if year missing).
+7. "documentDate": Date on the document in "YYYY-MM-DD" format.
 8. "orderNumber": Customer Purchase Order (PO) number or RFQ number.
 9. "documentType": The type of document (e.g. "Customer Delivery Note", "Request for Quotation (RFQ)", "Dispatch Advice", "Goods Received Note", or "Other").
-10. "rawExtractedSummary": A concise summary (2-3 sentences) detailing the document identified, delivery note number, customer job number, and how many component lines were read.
+10. "rawExtractedSummary": A concise factual summary (2-3 sentences) detailing the document identified, the exact delivery note number, customer name, and component lines found.
 
 ${customerListPrompt}
 
 ${componentTypesPrompt}
 
-Be thorough and accurate. Ensure every component mentioned in the document becomes its own receiving component line with its model clearly identified.
+Be thorough and extract only genuine content from the document image.
 `.trim();
 
     const parts: any[] = rawImages.slice(0, 3).map((img) => ({
@@ -355,7 +321,7 @@ Be thorough and accurate. Ensure every component mentioned in the document becom
       },
     };
 
-    // Cascade: Try gemini-3.1-flash-lite first (fastest and most reliable for vision OCR), then gemini-flash-latest, then gemini-3.8-flash
+    // Cascade: Try gemini-3.1-flash-lite first, then gemini-flash-latest, then gemini-3.8-flash
     const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
     let response: any = null;
     let lastError: any = null;
@@ -372,55 +338,17 @@ Be thorough and accurate. Ensure every component mentioned in the document becom
         }
       } catch (err: any) {
         lastError = err;
-        console.warn(`Vision model ${modelCandidate} temporary issue:`, err?.message?.slice(0, 80));
+        console.warn(`Vision model ${modelCandidate} failed:`, err?.message?.slice(0, 120));
       }
     }
 
     if (!response || !response.text) {
-      // If AI vision models experienced a temporary quota/demand spike, return structured response so user is never blocked
-      console.warn('Vision models unavailable, providing fallback extraction:', lastError?.message);
-      return res.json({
-        success: true,
-        data: {
-          deliveryNoteNumber: 'DN-99481',
-          customerJobNumber: 'CJ-2024-88A',
-          amountOfComponents: 3,
-          customerName: 'Precision Engineering Ltd',
-          documentDate: new Date().toISOString().split('T')[0],
-          orderNumber: 'PO-77291',
-          documentType: 'Customer Delivery Note',
-          rawExtractedSummary: 'Document recognized: Customer Delivery Note with 3 component lines (Spindle HSD ES929, Motor Siemens 1FK7, Pump Rexroth A10VSO).',
-          componentLines: [
-            {
-              lineNumber: 1,
-              componentType: 'Spindle',
-              modelName: 'HSD ES929 24000RPM ISO30',
-              serialNumber: 'SN-884912',
-              quantity: 1,
-              description: 'Electrospindle - Bearing noise reported, evaluate for rebuild',
-              notes: 'Bearing noise, shaft runout inspection'
-            },
-            {
-              lineNumber: 2,
-              componentType: 'Motor',
-              modelName: 'Siemens 1FK7060-5AF71-1AH0',
-              serialNumber: 'SN-049281',
-              quantity: 1,
-              description: 'AC Servomotor - Resolver fault & rewinding check',
-              notes: 'Resolver check'
-            },
-            {
-              lineNumber: 3,
-              componentType: 'Pump',
-              modelName: 'Rexroth A10VSO45 DFR1/31R',
-              serialNumber: 'SN-552109',
-              quantity: 1,
-              description: 'Variable displacement hydraulic piston pump',
-              notes: 'Low pressure symptom'
-            }
-          ]
-        },
-        notice: 'Note: Processed via resilient fallback parser due to temporary AI model traffic.'
+      console.error('All vision models failed to parse document:', lastError?.message);
+      return res.status(502).json({
+        success: false,
+        error: lastError?.message
+          ? `Gemini AI vision error: ${lastError.message}`
+          : 'Could not extract text from document image. Please ensure the paperwork is clear and well-lit, then try again.'
       });
     }
 
