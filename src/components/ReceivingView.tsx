@@ -169,6 +169,25 @@ export default function ReceivingView({
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [cameraTarget, setCameraTarget] = useState<{ isDeliveryLevel: boolean; jobIdx?: number; categoryName?: string } | null>(null);
 
+  // Option for AI to auto populate the fields via picture taken from document upload
+  const [autoPopulateEnabled, setAutoPopulateEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('metalogik_auto_populate_receiving');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const toggleAutoPopulate = (val: boolean) => {
+    setAutoPopulateEnabled(val);
+    try {
+      localStorage.setItem('metalogik_auto_populate_receiving', String(val));
+    } catch {
+      // ignore
+    }
+  };
+
   // AI Extraction state
   const [isExtractingAi, setIsExtractingAi] = useState(false);
   const [aiStatusMsg, setAiStatusMsg] = useState('');
@@ -187,10 +206,12 @@ export default function ReceivingView({
   ) => {
     if (!imageUrls || imageUrls.length === 0) return;
     setIsExtractingAi(true);
-    setAiStatusMsg('Analyzing picture with AI to extract delivery information...');
+    setAiStatusMsg('Reading document picture with Gemini AI vision...');
+    setAiExtractedBanner(null);
 
     try {
-      const res = await fetch('/api/parse-delivery-image', {
+      let result: any = null;
+      let res = await fetch('/api/parse-delivery-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -200,24 +221,39 @@ export default function ReceivingView({
         })
       });
 
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Server responded with status ${res.status}`);
+      if (res.ok) {
+        result = await res.json();
       }
 
-      const result = await res.json();
-      if (!result.success || !result.data) {
-        throw new Error(result.error || 'No readable delivery data returned');
+      // If /api/parse-delivery-image failed or returned no data, fallback to /api/parse-paperwork-ai
+      if (!result?.success || !result?.data) {
+        setAiStatusMsg('Retrying with document OCR fallback...');
+        res = await fetch('/api/parse-paperwork-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: imageUrls[0],
+            knownCustomers: customers.map(c => ({ id: c.id, name: c.name })),
+            knownComponentTypes: componentsList.map(c => c.name || c.id)
+          })
+        });
+        if (res.ok) {
+          result = await res.json();
+        }
+      }
+
+      if (!result?.success || !result?.data) {
+        throw new Error(result?.error || 'No readable paperwork details returned from photo analysis');
       }
 
       const info = result.data;
       const detectedDetails: string[] = [];
 
       // 1. Delivery Note Number
-      if (info.deliveryNoteNumber && info.deliveryNoteNumber.trim()) {
-        const cleanDn = info.deliveryNoteNumber.trim();
-        setDeliveryNoteNumber(cleanDn);
-        detectedDetails.push(`Delivery Note: ${cleanDn}`);
+      const dn = info.deliveryNoteNumber?.trim();
+      if (dn) {
+        setDeliveryNoteNumber(dn);
+        detectedDetails.push(`Delivery Note #: ${dn}`);
       }
 
       // 2. Customer matching
@@ -241,13 +277,19 @@ export default function ReceivingView({
       }
 
       // 3. Date Received
-      if (info.dateReceived && /^\d{4}-\d{2}-\d{2}$/.test(info.dateReceived)) {
-        setDateReceived(info.dateReceived);
-        detectedDetails.push(`Date: ${info.dateReceived}`);
+      const rawDate = info.dateReceived || info.documentDate;
+      if (rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+        setDateReceived(rawDate);
+        detectedDetails.push(`Date: ${rawDate}`);
       }
 
       // 4. Job Items & Reference fields
-      const hasExtractedItems = Array.isArray(info.items) && info.items.length > 0;
+      const extractedLines = (Array.isArray(info.items) && info.items.length > 0)
+        ? info.items
+        : (Array.isArray(info.componentLines) && info.componentLines.length > 0)
+          ? info.componentLines
+          : [];
+      const hasExtractedItems = extractedLines.length > 0;
       const generalOrderNumber = info.orderNumber?.trim() || '';
       const generalYourRef = info.yourRef?.trim() || '';
       const generalCustJob = info.customerJobNumber?.trim() || '';
@@ -257,7 +299,7 @@ export default function ReceivingView({
         setJobItems(prev => {
           const updated = [...prev];
           if (updated[targetJobIdx]) {
-            const firstItem = hasExtractedItems ? info.items[0] : null;
+            const firstItem = hasExtractedItems ? extractedLines[0] : null;
             if (firstItem?.serialNumber) {
               updated[targetJobIdx].serialNumber = firstItem.serialNumber;
               detectedDetails.push(`Part/Serial #: ${firstItem.serialNumber}`);
@@ -289,18 +331,24 @@ export default function ReceivingView({
       } else if (hasExtractedItems) {
         // Delivery note has one or more line items
         setJobItems(prev => {
-          const newItems: TempJobItem[] = info.items.map((rawItem: any, index: number) => {
+          const newItems: TempJobItem[] = extractedLines.map((rawItem: any, index: number) => {
+            const rawType = (rawItem.componentType || '').toLowerCase().trim();
             const matchedComp = componentsList.find(c => 
-              c.id.toLowerCase() === (rawItem.componentType || '').toLowerCase() ||
-              c.name.toLowerCase() === (rawItem.componentType || '').toLowerCase()
+              c.id.toLowerCase() === rawType ||
+              c.name.toLowerCase() === rawType ||
+              rawType.includes(c.id.toLowerCase()) ||
+              rawType.includes(c.name.toLowerCase())
             ) || componentsList[0];
 
             const compType = matchedComp ? (matchedComp.id || matchedComp.name) : (componentsList[0]?.id || 'Spindle');
-            const model = rawItem.modelName || matchedComp?.models[0] || '';
-            const serial = rawItem.serialNumber || '';
-            const order = rawItem.orderNumber || generalOrderNumber;
+            const model = rawItem.modelName?.trim() || matchedComp?.models[0] || '';
+            const serial = rawItem.serialNumber?.trim() || '';
+            const order = rawItem.orderNumber?.trim() || generalOrderNumber;
+            const custJob = rawItem.customerJobNumber?.trim() || generalCustJob || 'NONE';
 
-            if (serial) detectedDetails.push(`Item ${index + 1}: ${serial} (${model || compType})`);
+            if (serial || model) {
+              detectedDetails.push(`Line ${index + 1}: ${model || compType} ${serial ? `(S/N: ${serial})` : ''}`);
+            }
 
             // Preserve existing photos if modifying item 0
             const existingFiles = (index === 0 && prev[0]?.files) ? prev[0].files : [];
@@ -312,8 +360,8 @@ export default function ReceivingView({
               files: existingFiles,
               orderNumber: order,
               yourRef: generalYourRef || 'NONE',
-              customerJobNumber: generalCustJob || 'NONE',
-              dueDate: getDefaultDueDate(info.dateReceived || dateReceived),
+              customerJobNumber: custJob,
+              dueDate: getDefaultDueDate(rawDate || dateReceived),
               workshopArea: '9B'
             };
           });
@@ -336,7 +384,7 @@ export default function ReceivingView({
 
       if (detectedDetails.length > 0) {
         setAiExtractedBanner({
-          summary: info.rawExtractedSummary || 'Delivery information extracted successfully from picture.',
+          summary: info.rawExtractedSummary || 'Delivery note information extracted successfully from picture.',
           details: detectedDetails,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           isError: false
@@ -363,11 +411,16 @@ export default function ReceivingView({
     }
   };
 
-  // Helper to process array of Files and automatically extract delivery information
-  const processFilesList = async (fileList: File[], isDeliveryLevel: boolean, jobIdx?: number) => {
+  // Helper to process array of Files and optionally auto-populate delivery information
+  const processFilesList = async (
+    fileList: File[], 
+    isDeliveryLevel: boolean, 
+    jobIdx?: number, 
+    overrideAutoPopulate?: boolean
+  ) => {
     const newlyAddedJobFiles: JobFile[] = [];
     for (const file of fileList) {
-      const { dataUrl, size } = await compressFile(file, 1024, 0.65);
+      const { dataUrl, size } = await compressFile(file, 1280, 0.72);
       const jobFile: JobFile = {
         name: file.name,
         type: file.type.startsWith('image/') ? 'image/jpeg' : file.type,
@@ -389,9 +442,13 @@ export default function ReceivingView({
       }
     }
 
-    // When picture is captured or uploaded, automatically populate delivery information!
+    // Check if auto-population is requested (via explicit override or global toggle)
+    const shouldAutoPopulate = overrideAutoPopulate !== undefined 
+      ? overrideAutoPopulate 
+      : (isDeliveryLevel ? autoPopulateEnabled : false);
+
     const imageFiles = newlyAddedJobFiles.filter(f => f.type.startsWith('image/') && f.dataUrl);
-    if (imageFiles.length > 0) {
+    if (imageFiles.length > 0 && shouldAutoPopulate) {
       const imageUrls = imageFiles.map(f => f.dataUrl);
       autoPopulateFromPicture(imageUrls, isDeliveryLevel ? 'delivery' : 'job', jobIdx);
     }
@@ -758,7 +815,10 @@ export default function ReceivingView({
                             {availableModels.map((m, mIdx) => (
                               <option key={`${m}-${mIdx}`} value={m}>{m}</option>
                             ))}
-                            {availableModels.length === 0 && (
+                            {item.modelName && !availableModels.includes(item.modelName) && (
+                              <option value={item.modelName}>{item.modelName} (Detected)</option>
+                            )}
+                            {availableModels.length === 0 && !item.modelName && (
                               <option value="">-- No models found --</option>
                             )}
                           </select>
@@ -905,38 +965,71 @@ export default function ReceivingView({
           <div className="space-y-6">
             {/* Paperwork Upload Card */}
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h2 className="text-sm font-bold text-slate-400 uppercase tracking-wider">3. Document Upload</h2>
-              
-              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:bg-slate-50 transition-colors">
-                <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-slate-700">Upload Delivery Note & Paperwork</p>
-                <p className="text-[10px] text-slate-400 mt-1">Images/PDFs up to 800KB</p>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wider">3. Document Upload</h2>
                 
-                <div className="flex items-center justify-center gap-2 mt-4">
+                {/* AI Auto-Populate Option Switch */}
+                <label 
+                  className={`inline-flex items-center gap-2 cursor-pointer border px-2.5 py-1.5 rounded-xl transition-all select-none ${
+                    autoPopulateEnabled 
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-900 shadow-2xs' 
+                      : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                  }`}
+                  title="When enabled, taking a picture or uploading paperwork automatically reads and populates delivery note, customer, and components"
+                >
+                  <input
+                    type="checkbox"
+                    checked={autoPopulateEnabled}
+                    onChange={(e) => toggleAutoPopulate(e.target.checked)}
+                    className="w-4 h-4 rounded-md accent-indigo-600 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold flex items-center gap-1.5">
+                    <Sparkles className={`w-3.5 h-3.5 ${autoPopulateEnabled ? 'text-indigo-600' : 'text-slate-400'}`} />
+                    Auto-populate with AI
+                  </span>
+                </label>
+              </div>
+              
+              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-5 text-center hover:bg-slate-50/80 transition-colors">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-2">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <p className="text-xs font-bold text-slate-800">Upload or Photograph Delivery Note</p>
+                <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto">
+                  Snap a photo of paperwork to automatically populate delivery number, customer, and equipment rows.
+                </p>
+                
+                <div className="flex items-center justify-center gap-2.5 mt-4 flex-wrap">
                   <button
                     type="button"
                     onClick={() => {
                       setCameraTarget({ isDeliveryLevel: true, categoryName: 'Delivery Paperwork' });
                       setIsCameraModalOpen(true);
                     }}
-                    className="inline-flex text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-3 py-1.5 cursor-pointer transition-colors items-center gap-1.5 shadow-2xs"
+                    className="inline-flex text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl px-4 py-2 cursor-pointer transition-all items-center gap-2 shadow-sm hover:shadow"
                   >
-                    <Camera className="w-3.5 h-3.5 text-emerald-600" />
-                    Take Photo
+                    <Camera className="w-4 h-4" />
+                    <span>Take Photo</span>
+                    {autoPopulateEnabled && (
+                      <span className="bg-emerald-700/80 text-[10px] px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
+                        <Sparkles className="w-2.5 h-2.5" /> AI
+                      </span>
+                    )}
                   </button>
 
                   <input
                     type="file"
                     multiple
                     id="delivery-file-upload"
+                    accept="image/*,application/pdf"
                     onChange={(e) => handleFileChange(e, true)}
                     className="hidden"
                   />
                   <label
                     htmlFor="delivery-file-upload"
-                    className="inline-flex text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-3 py-1.5 cursor-pointer transition-colors items-center gap-1.5"
+                    className="inline-flex text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-xl px-4 py-2 cursor-pointer transition-all items-center gap-2 shadow-2xs"
                   >
-                    <Upload className="w-3.5 h-3.5" />
+                    <Upload className="w-4 h-4 text-slate-500" />
                     Browse Files
                   </label>
                 </div>
@@ -944,47 +1037,92 @@ export default function ReceivingView({
 
               {/* Extract Info from Picture action */}
               {deliveryFiles.filter(f => f.type.startsWith('image/')).length > 0 && (
-                <button
-                  type="button"
-                  disabled={isExtractingAi}
-                  onClick={() => {
-                    const imgs = deliveryFiles.filter(f => f.type.startsWith('image/')).map(f => f.dataUrl);
-                    autoPopulateFromPicture(imgs, 'delivery');
-                  }}
-                  className="w-full inline-flex items-center justify-center gap-2 text-xs font-bold text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl py-2 px-3 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
-                >
-                  {isExtractingAi ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
-                      Reading Document Details with AI...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                      Populate Delivery Info from Photo
-                    </>
-                  )}
-                </button>
+                <div className="p-3.5 bg-gradient-to-r from-indigo-50/90 to-blue-50/90 border border-indigo-200/80 rounded-2xl space-y-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs font-bold text-indigo-950">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-indigo-600" />
+                      AI Document Extraction
+                    </span>
+                    <span className="text-[10px] bg-white border border-indigo-200 text-indigo-700 font-semibold px-2 py-0.5 rounded-full">
+                      {deliveryFiles.filter(f => f.type.startsWith('image/')).length} photo(s) attached
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-indigo-800 leading-relaxed">
+                    Read Delivery Note #, customer name, date, and create equipment rows directly from the picture.
+                  </p>
+
+                  <button
+                    type="button"
+                    disabled={isExtractingAi}
+                    onClick={() => {
+                      const imgs = deliveryFiles.filter(f => f.type.startsWith('image/')).map(f => f.dataUrl);
+                      autoPopulateFromPicture(imgs, 'delivery');
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl py-2.5 px-4 transition-all cursor-pointer shadow-sm disabled:opacity-50"
+                  >
+                    {isExtractingAi ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        {aiStatusMsg || 'Analyzing Document with AI...'}
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-indigo-200" />
+                        Auto-Populate Fields from Picture
+                      </>
+                    )}
+                  </button>
+                </div>
               )}
 
-              {/* List Paperwork Files */}
+              {/* List Paperwork Files with thumbnail preview */}
               {deliveryFiles.length > 0 && (
                 <div className="space-y-2 pt-2">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Attached Paperwork</p>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Attached Paperwork ({deliveryFiles.length})</p>
                   <div className="space-y-1.5">
                     {deliveryFiles.map((file, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs">
-                        <div className="flex items-center gap-2 text-slate-700">
-                          <FileText className="w-4 h-4 text-slate-400" />
-                          <span className="truncate max-w-[150px] font-medium">{file.name}</span>
+                      <div key={idx} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          {file.type.startsWith('image/') && file.dataUrl ? (
+                            <img 
+                              src={file.dataUrl} 
+                              alt={file.name} 
+                              className="w-9 h-9 object-cover rounded-lg border border-slate-200 flex-shrink-0 bg-white" 
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-lg bg-slate-200/80 flex items-center justify-center flex-shrink-0 text-slate-500">
+                              <FileText className="w-4 h-4" />
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <span className="truncate block font-semibold text-slate-800">{file.name}</span>
+                            <span className="text-[10px] text-slate-400">
+                              {(file.size / 1024).toFixed(0)} KB {file.type.startsWith('image/') && '• Paperwork photo'}
+                            </span>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeFile(idx, true)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1 rounded-md"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1.5">
+                          {file.type.startsWith('image/') && (
+                            <button
+                              type="button"
+                              disabled={isExtractingAi}
+                              onClick={() => autoPopulateFromPicture([file.dataUrl], 'delivery')}
+                              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-1 rounded-lg cursor-pointer transition-colors"
+                              title="Re-run AI extraction on this photo"
+                            >
+                              Scan
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeFile(idx, true)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg cursor-pointer"
+                            title="Remove file"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1014,11 +1152,13 @@ export default function ReceivingView({
       <CameraCaptureModal
         isOpen={isCameraModalOpen}
         onClose={() => setIsCameraModalOpen(false)}
-        title="Take Photo"
+        title={cameraTarget?.isDeliveryLevel ? "Photograph Paperwork" : "Take Photo"}
         categoryName={cameraTarget?.categoryName}
-        onPhotosCaptured={(files) => {
+        enableAiOption={cameraTarget?.isDeliveryLevel}
+        isAiOptionDefault={autoPopulateEnabled}
+        onPhotosCaptured={(files, shouldAutoPopulate) => {
           if (cameraTarget) {
-            processFilesList(files, cameraTarget.isDeliveryLevel, cameraTarget.jobIdx);
+            processFilesList(files, cameraTarget.isDeliveryLevel, cameraTarget.jobIdx, shouldAutoPopulate);
           }
         }}
       />

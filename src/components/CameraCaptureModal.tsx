@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, RefreshCw, Check, X, Trash2, SwitchCamera, AlertCircle, Upload } from 'lucide-react';
+import { Camera, RefreshCw, Check, X, Trash2, SwitchCamera, AlertCircle, Upload, Sparkles } from 'lucide-react';
 
 interface CameraCaptureModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPhotosCaptured: (files: File[]) => void;
+  onPhotosCaptured: (files: File[], shouldAutoPopulate?: boolean) => void;
   title?: string;
   categoryName?: string;
+  enableAiOption?: boolean;
+  isAiOptionDefault?: boolean;
 }
 
 export default function CameraCaptureModal({
@@ -14,7 +16,9 @@ export default function CameraCaptureModal({
   onClose,
   onPhotosCaptured,
   title = "Take Photos",
-  categoryName
+  categoryName,
+  enableAiOption = false,
+  isAiOptionDefault = true,
 }: CameraCaptureModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -27,9 +31,22 @@ export default function CameraCaptureModal({
   const [isInitializing, setIsInitializing] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
 
+  const isDocumentCategory = enableAiOption || 
+    categoryName?.toLowerCase().includes('delivery') || 
+    categoryName?.toLowerCase().includes('paperwork') || 
+    categoryName?.toLowerCase().includes('document');
+
+  const [autoPopulateWithAi, setAutoPopulateWithAi] = useState(isAiOptionDefault);
+
+  // Sync default state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setAutoPopulateWithAi(isAiOptionDefault);
+    }
+  }, [isOpen, isAiOptionDefault]);
+
   // Initialize camera stream when modal opens or facingMode changes
   useEffect(() => {
-
     if (!isOpen) {
       stopCamera();
       setCapturedPhotos([]);
@@ -135,10 +152,11 @@ export default function CameraCaptureModal({
     });
   };
 
-  const handleConfirmUpload = () => {
+  const handleConfirmUpload = (forceAutoPopulate?: boolean) => {
     if (capturedPhotos.length === 0) return;
     const files = capturedPhotos.map(p => p.file);
-    onPhotosCaptured(files);
+    const shouldPopulate = forceAutoPopulate !== undefined ? forceAutoPopulate : (isDocumentCategory && autoPopulateWithAi);
+    onPhotosCaptured(files, shouldPopulate);
     onClose();
   };
 
@@ -296,7 +314,7 @@ export default function CameraCaptureModal({
 
         {/* Captured Photos Queue Bar */}
         {capturedPhotos.length > 0 && (
-          <div className="p-3 bg-slate-950 border-t border-slate-800 space-y-2">
+          <div className="p-3 bg-slate-950 border-t border-slate-800 space-y-2.5">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-400">
               <span>Captured Photos ({capturedPhotos.length})</span>
               <button
@@ -322,32 +340,76 @@ export default function CameraCaptureModal({
                 </div>
               ))}
             </div>
+
+            {/* Document AI Auto-Populate Option Switch */}
+            {isDocumentCategory && (
+              <div className="flex items-center justify-between p-2.5 bg-indigo-950/40 border border-indigo-800/50 rounded-xl">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-indigo-200 select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoPopulateWithAi}
+                    onChange={(e) => setAutoPopulateWithAi(e.target.checked)}
+                    className="w-4 h-4 rounded-md accent-indigo-500 cursor-pointer"
+                  />
+                  <span className="font-semibold flex items-center gap-1.5 text-indigo-300">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                    Auto-populate fields with AI
+                  </span>
+                </label>
+                <span className="text-[10px] text-indigo-300/80 hidden sm:inline">
+                  Reads DN #, customer, order # & components
+                </span>
+              </div>
+            )}
           </div>
         )}
 
         {/* Footer Actions */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900 flex items-center justify-between gap-3 flex-shrink-0">
+        <div className="p-4 border-t border-slate-800 bg-slate-900 flex items-center justify-between gap-3 flex-shrink-0 flex-wrap">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+            className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
           >
             Cancel
           </button>
 
-          <button
-            type="button"
-            onClick={handleConfirmUpload}
-            disabled={capturedPhotos.length === 0}
-            className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md ${
-              capturedPhotos.length > 0
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            <Check className="w-4 h-4" />
-            <span>Use {capturedPhotos.length} Photo{capturedPhotos.length === 1 ? '' : 's'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {capturedPhotos.length > 0 && isDocumentCategory && autoPopulateWithAi && (
+              <button
+                type="button"
+                onClick={() => handleConfirmUpload(false)}
+                className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-all cursor-pointer"
+              >
+                Upload Only
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => handleConfirmUpload()}
+              disabled={capturedPhotos.length === 0}
+              className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md ${
+                capturedPhotos.length === 0
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                  : isDocumentCategory && autoPopulateWithAi
+                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/30'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
+              }`}
+            >
+              {isDocumentCategory && autoPopulateWithAi ? (
+                <>
+                  <Sparkles className="w-4 h-4 text-indigo-200" />
+                  <span>Use & Auto-Populate Fields</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Use {capturedPhotos.length} Photo{capturedPhotos.length === 1 ? '' : 's'}</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
