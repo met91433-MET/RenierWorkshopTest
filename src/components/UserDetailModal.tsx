@@ -382,13 +382,15 @@ export const UserDetailModal: React.FC<UserDetailModalProps> = ({
     try {
       const uid = mode === 'edit' && user ? user.uid : `metalogik-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
       const createdAt = mode === 'edit' && user?.createdAt ? user.createdAt : new Date().toISOString();
+      const resolvedPassword = password.trim() ? password.trim() : (mode === 'edit' && user?.password ? user.password : undefined);
 
       const updatedProfile: UserProfile = {
+        ...(mode === 'edit' && user ? user : {}),
         uid,
         email: emailTrimmed,
         displayName: displayName.trim(),
         permissions,
-        password: password.trim() || undefined,
+        password: resolvedPassword,
         createdAt,
         updatedAt: new Date().toISOString()
       };

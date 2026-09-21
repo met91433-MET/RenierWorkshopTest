@@ -171,6 +171,7 @@ interface TopUserBannerProps {
   onDismissNotification: (notificationId: string) => Promise<void>;
   onDismissAllNotifications: (notificationIds: string[]) => Promise<void>;
   onNavigateToJob: (tab: string, jobId?: string) => void;
+  onSyncNotifications?: () => Promise<any> | any;
   onOpenChat: () => void;
   onSignOut: () => void;
   onForceSync: () => void;
@@ -189,6 +190,7 @@ export default function TopUserBanner({
   onDismissNotification,
   onDismissAllNotifications,
   onNavigateToJob,
+  onSyncNotifications,
   onOpenChat,
   onSignOut,
   onForceSync,
@@ -204,6 +206,7 @@ export default function TopUserBanner({
   const [tickingId, setTickingId] = useState<string | null>(null);
   const [blockedAlertId, setBlockedAlertId] = useState<string | null>(null);
   const [globalBannerMessage, setGlobalBannerMessage] = useState<string | null>(null);
+  const [isSyncingNotifs, setIsSyncingNotifs] = useState(false);
 
   // Change Password state
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
@@ -271,8 +274,25 @@ export default function TopUserBanner({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Filter notifications relevant to current user's profile access
+  // Filter notifications relevant to current user's profile access and captured jobs
   const isRelevantForUser = (notif: AppNotification): boolean => {
+    // If notification references a job, strictly ensure the job exists in currently captured jobs
+    if (notif.jobId || notif.jobNo) {
+      if (!jobs || jobs.length === 0) return false;
+      const targetId = notif.jobId?.trim().toLowerCase();
+      const targetNo = notif.jobNo?.trim().toLowerCase();
+      const jobFound = jobs.some(j => {
+        const jId = j.id?.trim().toLowerCase();
+        const jDn = j.deliveryNoteNumber?.trim().toLowerCase();
+        const jCard = j.jobCardDetails?.jobCardNumber?.trim().toLowerCase();
+        return (
+          (targetId && (jId === targetId || jDn === targetId || jCard === targetId)) ||
+          (targetNo && (jId === targetNo || jDn === targetNo || jCard === targetNo))
+        );
+      });
+      if (!jobFound) return false;
+    }
+
     if (currentUser.permissions.isAdmin) return true;
     if (!notif.targetPermission || notif.targetPermission === 'all') return true;
     const permKey = notif.targetPermission as keyof UserPermissions;
@@ -513,24 +533,49 @@ export default function TopUserBanner({
                     <p className="text-[10px] text-slate-500">Filtered for your profile permissions</p>
                   </div>
                 </div>
-                {activeNotifs.length > 0 && notifTab === 'active' && (
-                  <button
-                    onClick={handleDismissAll}
-                    className={`text-[10px] font-bold px-2 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer ${
-                      readyToDismissCount > 0
-                        ? 'text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200'
-                        : 'text-slate-400 bg-slate-100 border border-slate-200 hover:bg-slate-200'
-                    }`}
-                    title={
-                      readyToDismissCount > 0
-                        ? `Acknowledge ${readyToDismissCount} completed task${readyToDismissCount > 1 ? 's' : ''}`
-                        : 'All active alerts have pending workflow steps that must be finished first'
-                    }
-                  >
-                    <CheckCheck className="w-3 h-3" />
-                    {readyToDismissCount > 0 ? `Tick Ready (${readyToDismissCount})` : 'Tick All Done'}
-                  </button>
-                )}
+                <div className="flex items-center gap-1.5">
+                  {onSyncNotifications && (
+                    <button
+                      type="button"
+                      disabled={isSyncingNotifs}
+                      onClick={async () => {
+                        setIsSyncingNotifs(true);
+                        try {
+                          await onSyncNotifications();
+                          setGlobalBannerMessage(`Synchronized with ${jobs.length} captured jobs.`);
+                          setTimeout(() => setGlobalBannerMessage(null), 3500);
+                        } catch (e) {
+                          console.error(e);
+                        } finally {
+                          setIsSyncingNotifs(false);
+                        }
+                      }}
+                      className="text-[10px] font-bold px-2 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 shadow-2xs disabled:opacity-50"
+                      title="Synchronize alerts with currently captured jobs in ERP"
+                    >
+                      <RefreshCw className={`w-3 h-3 text-blue-600 ${isSyncingNotifs ? 'animate-spin' : ''}`} />
+                      <span className="hidden sm:inline">Sync Jobs</span>
+                    </button>
+                  )}
+                  {activeNotifs.length > 0 && notifTab === 'active' && (
+                    <button
+                      onClick={handleDismissAll}
+                      className={`text-[10px] font-bold px-2 py-1 rounded-md transition-colors flex items-center gap-1 cursor-pointer ${
+                        readyToDismissCount > 0
+                          ? 'text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200'
+                          : 'text-slate-400 bg-slate-100 border border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title={
+                        readyToDismissCount > 0
+                          ? `Acknowledge ${readyToDismissCount} completed task${readyToDismissCount > 1 ? 's' : ''}`
+                          : 'All active alerts have pending workflow steps that must be finished first'
+                      }
+                    >
+                      <CheckCheck className="w-3 h-3" />
+                      {readyToDismissCount > 0 ? `Tick Ready (${readyToDismissCount})` : 'Tick All Done'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Global Banner Notice (e.g. Incomplete alert notification) */}
@@ -615,8 +660,13 @@ export default function TopUserBanner({
                       <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-500 mx-auto flex items-center justify-center mb-2 border border-emerald-100">
                         <CheckCircle2 className="w-5 h-5" />
                       </div>
-                      <p className="text-xs font-bold text-slate-700">All caught up!</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">No pending action items for your role clearances.</p>
+                      <p className="text-xs font-bold text-slate-700">All alerts synchronized!</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {jobs.length === 0
+                          ? 'No captured jobs in database. All notifications are clear.'
+                          : `Notification area is synced with ${jobs.length} captured job${jobs.length > 1 ? 's' : ''}. No pending action items.`
+                        }
+                      </p>
                     </div>
                   ) : (
                     filteredActiveNotifs.map(notif => {

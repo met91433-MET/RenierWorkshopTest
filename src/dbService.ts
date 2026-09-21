@@ -9,7 +9,8 @@ import {
   query, 
   where,
   serverTimestamp,
-  onSnapshot
+  onSnapshot,
+  writeBatch
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { Customer, Machine, ComponentMatrix, Job, CustomColumn, UserProfile, UserPermissions, JobCardFormatConfig, DEFAULT_JOB_CARD_FORMAT, ToolStockItem, ConsumableItem, ConsumableAllocationLog, ToolLog, WorksheetEntry, AppNotification, ChatMessage } from './types';
@@ -502,6 +503,24 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   }
 }
 
+export async function getUserProfileByEmail(email: string): Promise<UserProfile | null> {
+  try {
+    const emailLower = (email || '').toLowerCase().trim();
+    if (!emailLower) return null;
+    const snapshot = await getDocs(collection(db, 'users'));
+    for (const d of snapshot.docs) {
+      const u = d.data() as UserProfile;
+      if ((u.email || '').toLowerCase().trim() === emailLower) {
+        return { ...u, uid: d.id };
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching user profile by email:", error);
+    return null;
+  }
+}
+
 export async function getAllUsers(): Promise<UserProfile[]> {
   try {
     const snapshot = await getDocs(collection(db, 'users'));
@@ -517,7 +536,7 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
-  await setDoc(doc(db, 'users', profile.uid), cleanForFirestore(profile));
+  await setDoc(doc(db, 'users', profile.uid), cleanForFirestore(profile), { merge: true });
 }
 
 export async function deleteUserProfile(uid: string): Promise<void> {
@@ -534,31 +553,53 @@ export async function updateUserPermissions(uid: string, permissions: UserPermis
 }
 
 /**
- * Removes all non-Metalogik users from the Firestore users collection
- * and seeds/updates the 9 official Metalogik users with their exact access levels.
+ * Seeds default Metalogik user accounts ONLY if they do NOT exist yet.
+ * NEVER deletes users created by administrators.
+ * NEVER overwrites custom names, passwords, or permissions configured by administrators.
+ */
+export async function seedMetalogikUsersIfMissing(): Promise<void> {
+  try {
+    const snapshot = await getDocs(collection(db, 'users'));
+    const existingByEmail = new Map<string, UserProfile>();
+    snapshot.forEach(d => {
+      const u = d.data() as UserProfile;
+      if (u.email) {
+        existingByEmail.set(u.email.toLowerCase().trim(), u);
+      }
+    });
+
+    for (const metalogikUser of METALOGIK_DEFAULT_USERS) {
+      const key = metalogikUser.email.toLowerCase().trim();
+      const existing = existingByEmail.get(key);
+      
+      // If user already exists in Firestore, do NOT overwrite their custom permissions or edits
+      if (!existing) {
+        const placeholderUid = `metalogik-${metalogikUser.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        const newProfile: UserProfile = {
+          uid: placeholderUid,
+          email: metalogikUser.email,
+          displayName: metalogikUser.name,
+          roleTitle: metalogikUser.roleTitle,
+          permissions: metalogikUser.perms,
+          createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'users', placeholderUid), cleanForFirestore(newProfile));
+      }
+    }
+  } catch (error) {
+    console.error("Error seeding missing Metalogik users:", error);
+  }
+}
+
+/**
+ * Reset default Metalogik users only if explicitly requested.
+ * Does NOT delete custom users created by administrators.
  */
 export async function resetAndSeedMetalogikUsers(): Promise<void> {
   try {
-    if (!auth.currentUser) {
-      return;
-    }
     const snapshot = await getDocs(collection(db, 'users'));
-    const metalogikEmails = new Set(METALOGIK_DEFAULT_USERS.map(u => u.email.toLowerCase()));
-    
-    // 1. Delete all users who do not belong to the Metalogik roster
-    for (const d of snapshot.docs) {
-      const data = d.data() as UserProfile;
-      const userEmail = (data.email || '').toLowerCase().trim();
-      if (!metalogikEmails.has(userEmail)) {
-        console.log(`Removing non-metalogik user: ${data.displayName || userEmail} (${d.id})`);
-        await deleteDoc(doc(db, 'users', d.id));
-      }
-    }
-
-    // 2. Ensure each of the 9 Metalogik users has a corresponding document
-    const refreshedSnapshot = await getDocs(collection(db, 'users'));
     const existingByEmail = new Map<string, UserProfile>();
-    refreshedSnapshot.forEach(d => {
+    snapshot.forEach(d => {
       const u = d.data() as UserProfile;
       if (u.email) {
         existingByEmail.set(u.email.toLowerCase().trim(), u);
@@ -570,19 +611,18 @@ export async function resetAndSeedMetalogikUsers(): Promise<void> {
       const existing = existingByEmail.get(key);
       
       if (existing) {
-        // Update permissions to match requested specification
         await setDoc(doc(db, 'users', existing.uid), cleanForFirestore({
           ...existing,
           displayName: metalogikUser.name,
           permissions: metalogikUser.perms
         }), { merge: true });
       } else {
-        // Create deterministic placeholder profile (will link upon authentication)
-        const placeholderUid = `metalogik-${metalogikUser.name.toLowerCase()}`;
+        const placeholderUid = `metalogik-${metalogikUser.name.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
         const newProfile: UserProfile = {
           uid: placeholderUid,
           email: metalogikUser.email,
           displayName: metalogikUser.name,
+          roleTitle: metalogikUser.roleTitle,
           permissions: metalogikUser.perms,
           createdAt: new Date().toISOString()
         };
@@ -590,7 +630,7 @@ export async function resetAndSeedMetalogikUsers(): Promise<void> {
       }
     }
   } catch (error) {
-    console.error("Error resetting and seeding Metalogik users:", error);
+    console.error("Error resetting Metalogik users:", error);
   }
 }
 
@@ -621,14 +661,25 @@ export async function saveJob(job: Job): Promise<void> {
 
 export async function deleteJob(id: string): Promise<void> {
   await deleteDoc(doc(db, 'jobs', id));
+  await deleteNotificationsForJob(id);
 }
 
 export async function deleteAllJobs(): Promise<void> {
   try {
     const snapshot = await getDocs(collection(db, 'jobs'));
-    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-    await Promise.all(deletePromises);
-    console.log(`Deleted ${snapshot.docs.length} job entries from database.`);
+    if (!snapshot.empty) {
+      const docs = snapshot.docs;
+      const batchSize = 400;
+      for (let i = 0; i < docs.length; i += batchSize) {
+        const chunk = docs.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        chunk.forEach(docSnap => batch.delete(docSnap.ref));
+        await batch.commit();
+      }
+      console.log(`Deleted ${docs.length} job entries from database.`);
+    }
+    // Also purge all job-related alerts to keep notification area completely in sync with captured jobs
+    await syncNotificationsWithJobs([]);
   } catch (error) {
     console.error("Error deleting all jobs:", error);
     handleFirestoreError(error, OperationType.DELETE, 'jobs');
@@ -801,12 +852,15 @@ export async function seedDatabaseIfEmpty(): Promise<void> {
 
     // 4. Ensure sample jobs are NOT auto-seeded and clear any default sample jobs
     // All captured jobs have been cleared as per user request.
+    // Sync notifications so any orphaned notifications from deleted jobs are purged
+    const currentJobs = await getJobs();
+    await syncNotificationsWithJobs(currentJobs);
     
     // Seed Stores Data if empty
     await seedStoresDataIfEmpty();
 
-    // 5. Reset and sync official Metalogik team users
-    await resetAndSeedMetalogikUsers();
+    // 5. Seed default Metalogik team users if not already present
+    await seedMetalogikUsersIfMissing();
   } catch (error) {
     console.error("Error seeding database:", error);
   }
@@ -1575,6 +1629,104 @@ export async function deleteNotification(notificationId: string): Promise<void> 
     await deleteDoc(doc(db, 'notifications', notificationId));
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `notifications/${notificationId}`);
+  }
+}
+
+/**
+ * Deletes all notifications related to a specific job (by ID or job number).
+ */
+export async function deleteNotificationsForJob(jobId: string): Promise<number> {
+  if (!jobId) return 0;
+  try {
+    const snap = await getDocs(collection(db, 'notifications'));
+    const target = jobId.trim().toLowerCase();
+    const batch = writeBatch(db);
+    let count = 0;
+
+    snap.docs.forEach(d => {
+      const data = d.data() as AppNotification;
+      const nJobId = data.jobId?.trim().toLowerCase();
+      const nJobNo = data.jobNo?.trim().toLowerCase();
+      if (nJobId === target || nJobNo === target) {
+        batch.delete(d.ref);
+        count++;
+      }
+    });
+
+    if (count > 0) {
+      await batch.commit();
+      console.log(`Deleted ${count} notifications for job ${jobId}`);
+    }
+    return count;
+  } catch (error) {
+    console.error(`Error deleting notifications for job ${jobId}:`, error);
+    return 0;
+  }
+}
+
+/**
+ * Synchronizes notifications with captured jobs.
+ * Any notification referencing a job that does not exist in captured jobs is purged from Firestore.
+ * If captured jobs is empty, all job-related notifications are purged.
+ */
+export async function syncNotificationsWithJobs(activeJobs: Job[] = []): Promise<{ deletedCount: number; remainingCount: number }> {
+  try {
+    const snap = await getDocs(collection(db, 'notifications'));
+    if (snap.empty) {
+      return { deletedCount: 0, remainingCount: 0 };
+    }
+
+    const validIdentifiers = new Set<string>();
+    for (const j of activeJobs) {
+      if (j.id) validIdentifiers.add(j.id.trim().toLowerCase());
+      if (j.deliveryNoteNumber) validIdentifiers.add(j.deliveryNoteNumber.trim().toLowerCase());
+      if (j.jobCardDetails?.jobCardNumber) validIdentifiers.add(j.jobCardDetails.jobCardNumber.trim().toLowerCase());
+    }
+
+    const docsToDelete: Array<typeof snap.docs[0]> = [];
+
+    snap.docs.forEach(docSnap => {
+      const notif = docSnap.data() as AppNotification;
+      const nJobId = notif.jobId?.trim().toLowerCase();
+      const nJobNo = notif.jobNo?.trim().toLowerCase();
+
+      // If active jobs is completely empty, all job-related notifications must be cleared
+      if (activeJobs.length === 0) {
+        if (nJobId || nJobNo || ['job_received', 'inspection_needed', 'quote_needed', 'job_card_ready'].includes(notif.type)) {
+          docsToDelete.push(docSnap);
+        }
+        return;
+      }
+
+      // If notification references a job, verify if that job still exists
+      if (nJobId || nJobNo) {
+        const matchesId = nJobId && validIdentifiers.has(nJobId);
+        const matchesNo = nJobNo && validIdentifiers.has(nJobNo);
+        if (!matchesId && !matchesNo) {
+          // Orphaned notification for a deleted job
+          docsToDelete.push(docSnap);
+        }
+      }
+    });
+
+    if (docsToDelete.length > 0) {
+      const batchSize = 400;
+      for (let i = 0; i < docsToDelete.length; i += batchSize) {
+        const chunk = docsToDelete.slice(i, i + batchSize);
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+      console.log(`Synchronized notifications: removed ${docsToDelete.length} stale notifications for non-existent jobs.`);
+    }
+
+    return { 
+      deletedCount: docsToDelete.length, 
+      remainingCount: snap.docs.length - docsToDelete.length 
+    };
+  } catch (error) {
+    console.error("Error synchronizing notifications with jobs:", error);
+    return { deletedCount: 0, remainingCount: 0 };
   }
 }
 

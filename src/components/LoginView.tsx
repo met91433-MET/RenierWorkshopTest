@@ -12,6 +12,7 @@ import {
   doc, 
   getDoc, 
   setDoc,
+  deleteDoc,
   collection,
   getDocs
 } from 'firebase/firestore';
@@ -91,39 +92,53 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       const profileDoc = await getDoc(doc(db, 'users', uid));
       if (profileDoc.exists()) {
         const loadedProfile = profileDoc.data() as UserProfile;
-        if (matchedMetalogik) {
-          const updatedProfile: UserProfile = {
-            ...loadedProfile,
-            displayName: matchedMetalogik.name,
-            permissions: matchedMetalogik.perms
-          };
-          await setDoc(doc(db, 'users', uid), updatedProfile, { merge: true });
-          onLoginSuccess(updatedProfile);
-        } else {
-          onLoginSuccess(loadedProfile);
-        }
+        onLoginSuccess(loadedProfile);
       } else {
-        const perms: UserPermissions = matchedMetalogik?.perms || {
-          canReceive: false,
-          canInspect: false,
-          canQuote: false,
-          canCreateJobCard: false,
-          canStores: false,
-          canWorksheet: false,
-          canReporting: false,
-          canClose: false,
-          isAdmin: false
-        };
-        const profile: UserProfile = {
-          uid,
-          email: emailTrimmed,
-          displayName: matchedMetalogik?.name || displayName.trim() || emailTrimmed.split('@')[0],
-          password,
-          permissions: perms,
-          createdAt: new Date().toISOString()
-        };
-        await setDoc(doc(db, 'users', uid), profile, { merge: true });
-        onLoginSuccess(profile);
+        // Check if an existing profile doc was created with a placeholder ID or by email
+        let existingProfile: UserProfile | null = null;
+        try {
+          const userSnapshot = await getDocs(collection(db, 'users'));
+          const foundDoc = userSnapshot.docs.find(d => {
+            const u = d.data() as UserProfile;
+            return (u.email || '').toLowerCase().trim() === emailTrimmed;
+          });
+          if (foundDoc) {
+            existingProfile = { ...(foundDoc.data() as UserProfile), uid };
+            await setDoc(doc(db, 'users', uid), existingProfile, { merge: true });
+            if (foundDoc.id !== uid) {
+              await deleteDoc(doc(db, 'users', foundDoc.id)).catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.warn("Could not check existing profile by email:", e);
+        }
+
+        if (existingProfile) {
+          onLoginSuccess(existingProfile);
+        } else {
+          const isMaster = emailTrimmed === 'met91433@gmail.com' || matchedMetalogik?.perms?.isAdmin;
+          const perms: UserPermissions = matchedMetalogik?.perms || {
+            canReceive: Boolean(isMaster),
+            canInspect: Boolean(isMaster),
+            canQuote: Boolean(isMaster),
+            canCreateJobCard: Boolean(isMaster),
+            canStores: Boolean(isMaster),
+            canWorksheet: Boolean(isMaster),
+            canReporting: Boolean(isMaster),
+            canClose: Boolean(isMaster),
+            isAdmin: Boolean(isMaster)
+          };
+          const profile: UserProfile = {
+            uid,
+            email: emailTrimmed,
+            displayName: matchedMetalogik?.name || displayName.trim() || emailTrimmed.split('@')[0],
+            password,
+            permissions: perms,
+            createdAt: new Date().toISOString()
+          };
+          await setDoc(doc(db, 'users', uid), profile, { merge: true });
+          onLoginSuccess(profile);
+        }
       }
     } catch (err: any) {
       console.error("Sign in error:", err);
@@ -183,30 +198,52 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
       const credential = await createUserWithEmailAndPassword(auth, emailTrimmed, password);
       const uid = credential.user.uid;
 
-      // 2. Configure official permissions
-      const perms: UserPermissions = matchedMetalogik?.perms || {
-        canReceive: false,
-        canInspect: false,
-        canQuote: false,
-        canCreateJobCard: false,
-        canStores: false,
-        canWorksheet: false,
-        canReporting: false,
-        canClose: false,
-        isAdmin: false
+      // Check if a profile was already configured by the admin in Admin Center or seeded
+      let existingProfile: UserProfile | null = null;
+      let existingDocId: string | null = null;
+      try {
+        const userSnapshot = await getDocs(collection(db, 'users'));
+        const foundDoc = userSnapshot.docs.find(d => {
+          const u = d.data() as UserProfile;
+          return (u.email || '').toLowerCase().trim() === emailTrimmed;
+        });
+        if (foundDoc) {
+          existingProfile = foundDoc.data() as UserProfile;
+          existingDocId = foundDoc.id;
+        }
+      } catch (e) {
+        console.warn("Could not check existing profile by email on registration:", e);
+      }
+
+      const isMaster = emailTrimmed === 'met91433@gmail.com' || existingProfile?.permissions?.isAdmin || matchedMetalogik?.perms?.isAdmin;
+      const perms: UserPermissions = existingProfile?.permissions || matchedMetalogik?.perms || {
+        canReceive: Boolean(isMaster),
+        canInspect: Boolean(isMaster),
+        canQuote: Boolean(isMaster),
+        canCreateJobCard: Boolean(isMaster),
+        canStores: Boolean(isMaster),
+        canWorksheet: Boolean(isMaster),
+        canReporting: Boolean(isMaster),
+        canClose: Boolean(isMaster),
+        isAdmin: Boolean(isMaster)
       };
 
       const profile: UserProfile = {
+        ...(existingProfile || {}),
         uid,
         email: emailTrimmed,
-        displayName: displayName.trim() || matchedMetalogik?.name || emailTrimmed.split('@')[0],
+        displayName: existingProfile?.displayName || displayName.trim() || matchedMetalogik?.name || emailTrimmed.split('@')[0],
         password,
         permissions: perms,
-        createdAt: new Date().toISOString()
+        createdAt: existingProfile?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
       // 3. Save profile to Firestore
       await setDoc(doc(db, 'users', uid), profile, { merge: true });
+      if (existingDocId && existingDocId !== uid) {
+        await deleteDoc(doc(db, 'users', existingDocId)).catch(() => {});
+      }
       onLoginSuccess(profile);
     } catch (err: any) {
       console.error("First-time password creation error:", err);
@@ -249,16 +286,34 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         const credential = await createUserWithEmailAndPassword(auth, emailTrimmed, staffPassword);
         const uid = credential.user.uid;
 
+        // Check if a profile was already saved in Firestore (e.g., custom permissions set by Admin)
+        const profileDoc = await getDoc(doc(db, 'users', uid));
+        let existingProfile = profileDoc.exists() ? (profileDoc.data() as UserProfile) : null;
+        let existingDocId: string | null = null;
+        if (!existingProfile) {
+          const userSnapshot = await getDocs(collection(db, 'users'));
+          const found = userSnapshot.docs.find(d => (d.data() as UserProfile).email?.toLowerCase().trim() === emailTrimmed);
+          if (found) {
+            existingProfile = found.data() as UserProfile;
+            existingDocId = found.id;
+          }
+        }
+
         const profile: UserProfile = {
+          ...(existingProfile || {}),
           uid,
           email: emailTrimmed,
-          displayName: selectedStaff.name,
+          displayName: existingProfile?.displayName || selectedStaff.name,
           password: staffPassword,
-          permissions: selectedStaff.perms,
-          createdAt: new Date().toISOString()
+          permissions: existingProfile?.permissions || selectedStaff.perms,
+          createdAt: existingProfile?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         };
 
         await setDoc(doc(db, 'users', uid), profile, { merge: true });
+        if (existingDocId && existingDocId !== uid) {
+          await deleteDoc(doc(db, 'users', existingDocId)).catch(() => {});
+        }
         setSelectedStaff(null);
         onLoginSuccess(profile);
       } catch (err: any) {
@@ -277,13 +332,25 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         const credential = await signInWithEmailAndPassword(auth, emailTrimmed, staffPassword);
         const uid = credential.user.uid;
 
+        const profileDoc = await getDoc(doc(db, 'users', uid));
+        let existingProfile = profileDoc.exists() ? (profileDoc.data() as UserProfile) : null;
+        if (!existingProfile) {
+          const userSnapshot = await getDocs(collection(db, 'users'));
+          const found = userSnapshot.docs.find(d => (d.data() as UserProfile).email?.toLowerCase().trim() === emailTrimmed);
+          if (found) {
+            existingProfile = found.data() as UserProfile;
+          }
+        }
+
         const profile: UserProfile = {
+          ...(existingProfile || {}),
           uid,
           email: emailTrimmed,
-          displayName: selectedStaff.name,
+          displayName: existingProfile?.displayName || selectedStaff.name,
           password: staffPassword,
-          permissions: selectedStaff.perms,
-          createdAt: new Date().toISOString()
+          permissions: existingProfile?.permissions || selectedStaff.perms,
+          createdAt: existingProfile?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         };
 
         await setDoc(doc(db, 'users', uid), profile, { merge: true });

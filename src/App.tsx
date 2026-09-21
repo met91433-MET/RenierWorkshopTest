@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { 
@@ -23,6 +23,7 @@ import {
   getCustomColumns, 
   getAllUsers, 
   getUserProfile,
+  getUserProfileByEmail,
   deleteUserProfile,
   resetAndSeedMetalogikUsers,
   METALOGIK_DEFAULT_USERS,
@@ -56,7 +57,10 @@ import {
   markAllNotificationsDismissed,
   sendChatMessage,
   toggleChatReaction,
-  createNotification
+  createNotification,
+  syncNotificationsWithJobs,
+  deleteNotificationsForJob,
+  getNotifications
 } from './dbService';
 
 import LoginView from './components/LoginView';
@@ -195,41 +199,49 @@ export default function App() {
       setAuthLoading(true);
       if (firebaseUser) {
         setUser(firebaseUser);
-        // Run database seeding and Metalogik user sync
+        // Run database seeding for missing defaults only
         await seedDatabaseIfEmpty();
         
-        // Load user profile permissions
-        const profile = await getUserProfile(firebaseUser.uid);
         const emailLower = (firebaseUser.email || '').toLowerCase().trim();
-        const matchedMetalogik = METALOGIK_DEFAULT_USERS.find(u => u.email.toLowerCase() === emailLower);
+        let profile = await getUserProfile(firebaseUser.uid);
+
+        // If no document exists with auth UID, check if a profile already exists for this email
+        // (for example created in Admin Center or seeded as a placeholder)
+        if (!profile && emailLower) {
+          const profileByEmail = await getUserProfileByEmail(emailLower);
+          if (profileByEmail) {
+            profile = {
+              ...profileByEmail,
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || profileByEmail.email
+            };
+            await saveUserProfile(profile);
+            if (profileByEmail.uid && profileByEmail.uid !== firebaseUser.uid) {
+              await deleteUserProfile(profileByEmail.uid).catch(() => {});
+            }
+          }
+        }
         
         if (profile) {
-          if (matchedMetalogik) {
-            const updatedProfile: UserProfile = {
-              ...profile,
-              displayName: matchedMetalogik.name,
-              permissions: matchedMetalogik.perms
-            };
-            setUserProfile(updatedProfile);
-            saveUserProfile(updatedProfile).catch(console.error);
-          } else {
-            setUserProfile(profile);
-          }
+          // RESPECT the saved profile from Firestore directly without overwriting custom edits
+          setUserProfile(profile);
         } else {
-          // If no profile exists yet in the database for this auth UID
+          // If brand new user with no document yet, initialize defaults
+          const matchedMetalogik = METALOGIK_DEFAULT_USERS.find(u => u.email.toLowerCase() === emailLower);
+          const isMasterAdmin = emailLower === 'met91433@gmail.com' || matchedMetalogik?.perms?.isAdmin;
           const perms: UserPermissions = matchedMetalogik?.perms || {
-            canReceive: false,
-            canInspect: false,
-            canQuote: false,
-            canCreateJobCard: false,
-            canStores: false,
-            canWorksheet: false,
-            canReporting: false,
-            canClose: false,
-            isAdmin: false
+            canReceive: Boolean(isMasterAdmin),
+            canInspect: Boolean(isMasterAdmin),
+            canQuote: Boolean(isMasterAdmin),
+            canCreateJobCard: Boolean(isMasterAdmin),
+            canStores: Boolean(isMasterAdmin),
+            canWorksheet: Boolean(isMasterAdmin),
+            canReporting: Boolean(isMasterAdmin),
+            canClose: Boolean(isMasterAdmin),
+            isAdmin: Boolean(isMasterAdmin)
           };
           
-          const fallbackProfile: UserProfile = {
+          const initialProfile: UserProfile = {
             uid: firebaseUser.uid,
             email: firebaseUser.email || '',
             displayName: matchedMetalogik?.name || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Operator',
@@ -237,10 +249,10 @@ export default function App() {
             createdAt: new Date().toISOString()
           };
           
-          setUserProfile(fallbackProfile);
-          // Save to Firestore in background
-          saveUserProfile(fallbackProfile).catch(err => {
-            console.error("Error creating fallback profile:", err);
+          setUserProfile(initialProfile);
+          // Save initial profile to Firestore
+          saveUserProfile(initialProfile).catch(err => {
+            console.error("Error creating initial profile:", err);
           });
         }
       } else {
@@ -273,6 +285,19 @@ export default function App() {
             }
           }
           localStorage.setItem(TEST_PURGE_KEY, 'true');
+        }
+
+        // Automatic user-requested purge of all current records of jobs
+        const PURGE_ALL_JOBS_KEY = 'mes_purge_all_current_jobs_user_request_v1';
+        if (!localStorage.getItem(PURGE_ALL_JOBS_KEY)) {
+          try {
+            console.log("Purging all current job records as requested by user...");
+            await deleteAllJobs();
+            setJobs([]);
+            localStorage.setItem(PURGE_ALL_JOBS_KEY, 'true');
+          } catch (purgeErr) {
+            console.error("Error purging all jobs on user request:", purgeErr);
+          }
         }
       } catch (err) {
         console.error("Cleanup check error:", err);
@@ -385,6 +410,47 @@ export default function App() {
         return !isNaN(msgTime) && msgTime > lastReadChatTimestamp;
       }).length;
 
+  // Active identifiers for currently captured jobs in ERP
+  const activeCapturedJobIdentifiers = useMemo(() => {
+    const set = new Set<string>();
+    for (const j of jobs) {
+      if (j.id) set.add(j.id.trim().toLowerCase());
+      if (j.deliveryNoteNumber) set.add(j.deliveryNoteNumber.trim().toLowerCase());
+      if (j.jobCardDetails?.jobCardNumber) set.add(j.jobCardDetails.jobCardNumber.trim().toLowerCase());
+    }
+    return set;
+  }, [jobs]);
+
+  // Synchronized notifications: Strictly sync notification area with captured jobs
+  // Only notifications that belong to currently existing captured jobs (or general non-job alerts) are allowed.
+  const syncedNotifications = useMemo(() => {
+    return notifications.filter(notif => {
+      const jId = notif.jobId?.trim().toLowerCase();
+      const jNo = notif.jobNo?.trim().toLowerCase();
+      if (!jId && !jNo) return true; // Keep general system alerts
+      if (jobs.length === 0) return false; // No captured jobs exist, so all job alerts are purged
+      return (jId && activeCapturedJobIdentifiers.has(jId)) || (jNo && activeCapturedJobIdentifiers.has(jNo));
+    });
+  }, [notifications, jobs, activeCapturedJobIdentifiers]);
+
+  // Auto-synchronize notifications with Firestore whenever orphaned alerts for non-existent jobs are detected
+  useEffect(() => {
+    if (notifications.length === 0) return;
+    const hasOrphans = notifications.some(notif => {
+      const jId = notif.jobId?.trim().toLowerCase();
+      const jNo = notif.jobNo?.trim().toLowerCase();
+      if (!jId && !jNo) return false;
+      if (jobs.length === 0) return true;
+      const matchesId = jId && activeCapturedJobIdentifiers.has(jId);
+      const matchesNo = jNo && activeCapturedJobIdentifiers.has(jNo);
+      return !matchesId && !matchesNo;
+    });
+
+    if (hasOrphans) {
+      syncNotificationsWithJobs(jobs).catch(err => console.error("Error auto-syncing notifications with jobs:", err));
+    }
+  }, [notifications, jobs, activeCapturedJobIdentifiers]);
+
   const loadAllERPData = async () => {
     setDataLoading(true);
     try {
@@ -403,6 +469,9 @@ export default function App() {
       setCustomColumns(fetchedCustomCols);
       setJobCardFormat(fetchedFormat);
 
+      // Synchronize notifications with the freshly fetched captured jobs
+      await syncNotificationsWithJobs(fetchedJobs);
+
       if (userProfile?.permissions.isAdmin) {
         const fetchedUsers = await getAllUsers();
         setUsersList(fetchedUsers);
@@ -414,8 +483,24 @@ export default function App() {
     }
   };
 
+  const handleManualSyncNotifications = async () => {
+    setDataLoading(true);
+    try {
+      const res = await syncNotificationsWithJobs(jobs);
+      const refreshedNotifs = await getNotifications();
+      setNotifications(refreshedNotifs);
+      return res;
+    } catch (err) {
+      console.error("Error manually syncing notifications:", err);
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
   const handleDeleteJob = async (id: string) => {
+    // Optimistically update both jobs and notifications
     setJobs(prev => prev.filter(j => j.id !== id));
+    setNotifications(prev => prev.filter(n => n.jobId !== id && n.jobNo !== id));
     try {
       await deleteJob(id);
     } catch (err) {
@@ -424,7 +509,9 @@ export default function App() {
   };
 
   const handleDeleteAllJobs = async () => {
+    // Optimistically purge all captured jobs and all job-related alerts
     setJobs([]);
+    setNotifications(prev => prev.filter(n => !n.jobId && !n.jobNo));
     try {
       await deleteAllJobs();
     } catch (err) {
@@ -630,14 +717,32 @@ export default function App() {
 
   const handleDeleteUser = async (uid: string) => {
     await deleteUserProfile(uid);
+    setUsersList(prev => prev.filter(u => u.uid !== uid));
   };
 
   const handleResetMetalogikUsers = async () => {
     await resetAndSeedMetalogikUsers();
+    const updated = await getAllUsers();
+    setUsersList(updated);
   };
 
   const handleSaveUser = async (profile: UserProfile) => {
     await saveUserProfile(profile);
+    // Optimistically update usersList state immediately
+    setUsersList(prev => {
+      const idx = prev.findIndex(u => u.uid === profile.uid || (u.email && profile.email && u.email.toLowerCase() === profile.email.toLowerCase()));
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = profile;
+        return next;
+      }
+      return [...prev, profile];
+    });
+
+    // If currently logged-in user edited their own profile, update active userProfile state too
+    if (userProfile && (userProfile.uid === profile.uid || (userProfile.email && profile.email && userProfile.email.toLowerCase() === profile.email.toLowerCase()))) {
+      setUserProfile(prev => prev ? { ...prev, ...profile } : profile);
+    }
   };
 
   const handleSaveJobCardFormat = async (config: JobCardFormatConfig) => {
@@ -706,6 +811,9 @@ export default function App() {
       <LoginView 
         onLoginSuccess={(profile) => {
           setUserProfile(profile);
+          if (!user) {
+            setUser(auth.currentUser || ({ uid: profile.uid, email: profile.email, displayName: profile.displayName } as any));
+          }
         }} 
       />
     );
@@ -881,13 +989,14 @@ export default function App() {
         {/* TOP BANNER: Logged in User + Role-Based Notification Bell & Center + Company Group Chat Button */}
         <TopUserBanner
           currentUser={userProfile}
-          notifications={notifications}
+          notifications={syncedNotifications}
           chatMessages={chatMessages}
           jobs={jobs}
           unreadChatCount={unreadChatCount}
           onDismissNotification={handleDismissNotification}
           onDismissAllNotifications={handleDismissAllNotifications}
           onNavigateToJob={handleNavigateFromNotification}
+          onSyncNotifications={handleManualSyncNotifications}
           onOpenChat={() => {
             setIsChatOpen(true);
             const now = Date.now();

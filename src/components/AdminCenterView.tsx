@@ -137,8 +137,7 @@ export default function AdminCenterView({
   const handleSaveUserFromModal = async (profile: UserProfile) => {
     if (onSaveUser) {
       await onSaveUser(profile);
-    }
-    if (onUpdateUserPermissions) {
+    } else if (onUpdateUserPermissions) {
       await onUpdateUserPermissions(profile.uid, profile.permissions);
     }
   };

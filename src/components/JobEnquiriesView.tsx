@@ -72,6 +72,8 @@ export default function JobEnquiriesView({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [jobToDelete, setJobToDelete] = useState<Job | null>(null);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
   // Default filter: 'WaitingGoAhead' (Jobs with job cards waiting for customer's go-ahead / order)
   const [statusFilter, setStatusFilter] = useState<string>('WaitingGoAhead');
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
@@ -798,9 +800,9 @@ export default function JobEnquiriesView({
         </div>
       </div>
 
-      {/* Toolbar Search Filter */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-        <div className="relative w-full">
+      {/* Toolbar Search Filter & Bulk Actions */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="relative w-full flex-1">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
@@ -810,6 +812,17 @@ export default function JobEnquiriesView({
             className="pl-10 pr-4 py-2.5 w-full text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-indigo-500 focus:bg-white transition-all font-medium"
           />
         </div>
+        {onDeleteAllJobs && jobs.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowDeleteAllModal(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-xl border border-red-200 transition-colors cursor-pointer whitespace-nowrap shadow-2xs shrink-0"
+            title="Delete all current job records from database"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-600" />
+            <span>Clear All Jobs ({jobs.length})</span>
+          </button>
+        )}
       </div>
 
       {/* Main Jobs Table List */}
@@ -2749,6 +2762,54 @@ export default function JobEnquiriesView({
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer"
               >
                 Delete Entry
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete All Jobs Confirmation Modal */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-red-200 p-6 max-w-md w-full space-y-4 animate-in fade-in zoom-in-95 text-left">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Clear All Job Records</h3>
+                <p className="text-[11px] text-slate-500 font-medium">Permanent Database Purge</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete <strong>all {jobs.length} current job records</strong> from the database? All job cards, inspection records, and component entries will be removed. This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeletingAll}
+                onClick={() => setShowDeleteAllModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingAll}
+                onClick={async () => {
+                  if (onDeleteAllJobs) {
+                    setIsDeletingAll(true);
+                    try {
+                      await onDeleteAllJobs();
+                    } finally {
+                      setIsDeletingAll(false);
+                      setShowDeleteAllModal(false);
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingAll ? 'Clearing Database...' : 'Yes, Clear All Jobs'}</span>
               </button>
             </div>
           </div>
