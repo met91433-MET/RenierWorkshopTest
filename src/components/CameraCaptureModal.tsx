@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, RefreshCw, Check, X, Trash2, SwitchCamera, AlertCircle, Upload, Sparkles } from 'lucide-react';
+import { Camera, RefreshCw, Check, X, Trash2, SwitchCamera, AlertCircle, Upload } from 'lucide-react';
 
 interface CameraCaptureModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPhotosCaptured: (files: File[], shouldAutoPopulate?: boolean) => void;
+  onPhotosCaptured: (files: File[]) => void;
   title?: string;
   categoryName?: string;
-  enableAiOption?: boolean;
-  isAiOptionDefault?: boolean;
 }
 
 export default function CameraCaptureModal({
@@ -17,8 +15,6 @@ export default function CameraCaptureModal({
   onPhotosCaptured,
   title = "Take Photos",
   categoryName,
-  enableAiOption = false,
-  isAiOptionDefault = true,
 }: CameraCaptureModalProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -30,20 +26,6 @@ export default function CameraCaptureModal({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [flashActive, setFlashActive] = useState(false);
-
-  const isDocumentCategory = enableAiOption || 
-    categoryName?.toLowerCase().includes('delivery') || 
-    categoryName?.toLowerCase().includes('paperwork') || 
-    categoryName?.toLowerCase().includes('document');
-
-  const [autoPopulateWithAi, setAutoPopulateWithAi] = useState(isAiOptionDefault);
-
-  // Sync default state when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setAutoPopulateWithAi(isAiOptionDefault);
-    }
-  }, [isOpen, isAiOptionDefault]);
 
   // Initialize camera stream when modal opens or facingMode changes
   useEffect(() => {
@@ -152,11 +134,10 @@ export default function CameraCaptureModal({
     });
   };
 
-  const handleConfirmUpload = (forceAutoPopulate?: boolean) => {
+  const handleConfirmUpload = () => {
     if (capturedPhotos.length === 0) return;
     const files = capturedPhotos.map(p => p.file);
-    const shouldPopulate = forceAutoPopulate !== undefined ? forceAutoPopulate : (isDocumentCategory && autoPopulateWithAi);
-    onPhotosCaptured(files, shouldPopulate);
+    onPhotosCaptured(files);
     onClose();
   };
 
@@ -199,9 +180,7 @@ export default function CameraCaptureModal({
                 )}
               </h3>
               <p className="text-[11px] text-slate-400">
-                {categoryName?.toLowerCase().includes('delivery') || categoryName?.toLowerCase().includes('paperwork')
-                  ? "✨ Snap delivery note or paperwork to automatically populate information with AI"
-                  : "Point device camera & snap photos directly"}
+                Point device camera & snap photos directly
               </p>
             </div>
           </div>
@@ -340,27 +319,6 @@ export default function CameraCaptureModal({
                 </div>
               ))}
             </div>
-
-            {/* Document AI Auto-Populate Option Switch */}
-            {isDocumentCategory && (
-              <div className="flex items-center justify-between p-2.5 bg-indigo-950/40 border border-indigo-800/50 rounded-xl">
-                <label className="flex items-center gap-2 cursor-pointer text-xs text-indigo-200 select-none">
-                  <input
-                    type="checkbox"
-                    checked={autoPopulateWithAi}
-                    onChange={(e) => setAutoPopulateWithAi(e.target.checked)}
-                    className="w-4 h-4 rounded-md accent-indigo-500 cursor-pointer"
-                  />
-                  <span className="font-semibold flex items-center gap-1.5 text-indigo-300">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                    Auto-populate fields with AI
-                  </span>
-                </label>
-                <span className="text-[10px] text-indigo-300/80 hidden sm:inline">
-                  Reads DN #, customer, order # & components
-                </span>
-              </div>
-            )}
           </div>
         )}
 
@@ -374,42 +332,19 @@ export default function CameraCaptureModal({
             Cancel
           </button>
 
-          <div className="flex items-center gap-2">
-            {capturedPhotos.length > 0 && isDocumentCategory && autoPopulateWithAi && (
-              <button
-                type="button"
-                onClick={() => handleConfirmUpload(false)}
-                className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-all cursor-pointer"
-              >
-                Upload Only
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => handleConfirmUpload()}
-              disabled={capturedPhotos.length === 0}
-              className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md ${
-                capturedPhotos.length === 0
-                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  : isDocumentCategory && autoPopulateWithAi
-                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/30'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
-              }`}
-            >
-              {isDocumentCategory && autoPopulateWithAi ? (
-                <>
-                  <Sparkles className="w-4 h-4 text-indigo-200" />
-                  <span>Use & Auto-Populate Fields</span>
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>Use {capturedPhotos.length} Photo{capturedPhotos.length === 1 ? '' : 's'}</span>
-                </>
-              )}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleConfirmUpload}
+            disabled={capturedPhotos.length === 0}
+            className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md ${
+              capturedPhotos.length === 0
+                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
+            }`}
+          >
+            <Check className="w-4 h-4" />
+            <span>Use {capturedPhotos.length} Photo{capturedPhotos.length === 1 ? '' : 's'}</span>
+          </button>
         </div>
       </div>
     </div>
